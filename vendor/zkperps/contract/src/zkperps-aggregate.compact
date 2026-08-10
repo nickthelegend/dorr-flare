@@ -1,0 +1,22 @@
+pragma language_version >= 0.22;
+
+import CompactStandardLibrary;
+
+/// Recursive / batched root over child proof digests (specification §7.2 aggregation strategy — minimal Merkle-style step).
+export ledger aggregatedRoot: Bytes<32>;
+
+witness leftProofDigest(): Maybe<Bytes<32>>;
+witness rightProofDigest(): Maybe<Bytes<32>>;
+
+constructor(initialRoot: Bytes<32>) {
+  aggregatedRoot = disclose(initialRoot);
+}
+
+/// ZK: proves `aggregatedRoot = H(left || right)` from private child digests.
+export circuit proveAggregatedProofBundle(): [] {
+  const L = leftProofDigest();
+  const R = rightProofDigest();
+  assert(L.is_some && R.is_some, "Missing child proof digests");
+  const root = disclose(persistentHash<Vector<2, Bytes<32>>>([L.value, R.value]));
+  aggregatedRoot = disclose(root);
+}

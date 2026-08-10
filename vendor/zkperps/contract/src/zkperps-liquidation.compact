@@ -1,0 +1,29 @@
+pragma language_version >= 0.22;
+
+import CompactStandardLibrary;
+
+/// Private margin bundle commitment (witness must open this commitment).
+export ledger marginCommitment: Bytes<32>;
+
+/// Public attestation tag binding margin witness to a disclosed liquidation threshold.
+export ledger breachTag: Bytes<32>;
+
+witness marginWitness(): Maybe<Bytes<32>>;
+
+circuit openCommitment(x: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<1, Bytes<32>>>([x]);
+}
+
+constructor(commitment: Bytes<32>) {
+  marginCommitment = disclose(commitment);
+  breachTag = disclose(pad(32, ""));
+}
+
+/// ZK: proves knowledge of margin witness for `marginCommitment`, records `H(witness || threshold)` (specification §3.6 liquidation proof path).
+export circuit proveLiquidationBreach(threshold: Bytes<32>): [] {
+  const w = marginWitness();
+  assert(w.is_some, "Missing margin witness");
+  assert(openCommitment(w.value) == marginCommitment, "Margin commitment mismatch");
+  const tag = disclose(persistentHash<Vector<2, Bytes<32>>>([w.value, threshold]));
+  breachTag = disclose(tag);
+}

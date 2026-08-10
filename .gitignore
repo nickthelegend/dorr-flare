@@ -1,0 +1,23 @@
+node_modules/
+.next/
+dist/
+build/
+*.log
+.DS_Store
+
+# secrets — never commit
+.env
+.env.*
+!.env.example
+wallets/
+*.sk
+*.skey
+
+# runtime state
+services/operator/data/
+tools/scripts/*.log
+/tmp/
+
+# Midnight localnet runtime DB (regenerated each run)
+vendor/zkperps/midnight-level-db/
+apps/web/.claude/

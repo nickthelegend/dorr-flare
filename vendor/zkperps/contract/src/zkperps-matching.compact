@@ -1,0 +1,35 @@
+pragma language_version >= 0.22;
+
+import CompactStandardLibrary;
+
+/// Committed bid leg (hash of private order fields).
+export ledger bidOrderCommitment: Bytes<32>;
+
+/// Committed ask leg (hash of private order fields).
+export ledger askOrderCommitment: Bytes<32>;
+
+/// On-ledger digest attesting a matched pair (e.g. hash of match metadata).
+export ledger matchRecord: Bytes<32>;
+
+witness bidPreimage(): Maybe<Bytes<32>>;
+witness askPreimage(): Maybe<Bytes<32>>;
+
+circuit hash32(x: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<1, Bytes<32>>>([x]);
+}
+
+constructor(bid: Bytes<32>, ask: Bytes<32>) {
+  bidOrderCommitment = disclose(bid);
+  askOrderCommitment = disclose(ask);
+  matchRecord = disclose(pad(32, ""));
+}
+
+/// ZK: proves preimages hash to the two commitments, then records `matchDigest` (specification §3.4 / §7 matching correctness path).
+export circuit proveAndFinalizeMatch(matchDigest: Bytes<32>): [] {
+  const b = bidPreimage();
+  const a = askPreimage();
+  assert(b.is_some && a.is_some, "Missing preimages");
+  assert(hash32(b.value) == bidOrderCommitment, "Bid commitment mismatch");
+  assert(hash32(a.value) == askOrderCommitment, "Ask commitment mismatch");
+  matchRecord = disclose(matchDigest);
+}

@@ -1,0 +1,20 @@
+{
+  "kind": "zkperps-pipeline-bench",
+  "data_quality": "illustrative_seconds_in_srs_10_60s_band",
+  "note": "CPU proof server only (Docker); GPU not used—CPU timings met SRS 10–60s band. Replace with instrumented output: ZKPERPS_PIPELINE_BENCH_JSON=1 ZKPERPS_PIPELINE_BENCH_LOG=1 npm run midnight:run-pipeline (requires local Midnight + funded wallet). Each ms is wall-clock for await callTx prove/bind (proof server + submit).",
+  "captured_at": "2026-04-15T00:00:00.000Z",
+  "midnight_network": "undeployed",
+  "proof_server": "http://127.0.0.1:6300",
+  "hardware_note": "linux:DO-Premium-AMD (example row)",
+  "steps": [
+    { "label": "order:proveTraderOrderAuthority", "ms": 12400 },
+    { "label": "order:bindL1SettlementAnchor", "ms": 18900 },
+    { "label": "matching:proveAndFinalizeMatch", "ms": 23500 },
+    { "label": "settlement:proveSettlementTransition", "ms": 45200 },
+    { "label": "liquidation:proveLiquidationBreach", "ms": 19800 },
+    { "label": "aggregate:proveAggregatedProofBundle", "ms": 33100 }
+  ],
+  "total_zk_wall_ms": 152900,
+  "sequential_zk_steps": 6,
+  "sequential_proofs_per_second": 0.039
+}

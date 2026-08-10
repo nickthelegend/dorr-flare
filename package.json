@@ -1,0 +1,20 @@
+{
+  "name": "dorr",
+  "private": true,
+  "version": "0.1.0",
+  "description": "dorr — privacy-preserving perpetuals on Cardano + Midnight (anti-front-running via ZK order commitments)",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "services/*",
+    "tools/*"
+  ],
+  "scripts": {
+    "web": "bun run --cwd apps/web dev",
+    "operator": "bun run --cwd services/operator dev",
+    "gen:wallet": "bun run tools/scripts/gen-wallet.ts"
+  },
+  "overrides": {
+    "@noble/hashes": "1.3.3"
+  }
+}

@@ -1,0 +1,25 @@
+pragma language_version >= 0.22;
+
+import CompactStandardLibrary;
+
+/// Rolling digest representing verified settlement state (balances / margin bundle).
+export ledger stateDigest: Bytes<32>;
+
+witness transitionPayload(): Maybe<Bytes<32>>;
+
+circuit combineDigest(prev: Bytes<32>, payload: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([prev, payload]);
+}
+
+constructor(initialDigest: Bytes<32>) {
+  stateDigest = disclose(initialDigest);
+}
+
+/// ZK: proves `nextDigest = H(stateDigest || transitionPayload)` and advances ledger (specification §3.5 settlement transition).
+export circuit proveSettlementTransition(nextDigest: Bytes<32>): [] {
+  const w = transitionPayload();
+  assert(w.is_some, "Missing settlement witness");
+  const computed = disclose(combineDigest(stateDigest, w.value));
+  assert(computed == nextDigest, "Settlement digest mismatch");
+  stateDigest = disclose(nextDigest);
+}

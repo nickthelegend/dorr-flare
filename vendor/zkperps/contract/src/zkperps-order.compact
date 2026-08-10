@@ -1,0 +1,43 @@
+pragma language_version >= 0.22;
+
+import CompactStandardLibrary;
+
+/// SHA-256 / persistent commitment to private order fields (anchored from L1 metadata and mirrored on Midnight).
+export ledger orderCommitment: Bytes<32>;
+
+/// Public trader key derived off-chain as `persistentHash(["zkperps:order:trader:v1", traderSecret])`.
+export ledger traderPk: Bytes<32>;
+
+/// Binding to an L1 settlement anchor digest (32 bytes, e.g. hash of Cardano tx id + settlement id).
+export ledger l1SettlementAnchor: Bytes<32>;
+
+witness traderSecret(): Maybe<Bytes<32>>;
+
+circuit hashTraderPk(sk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>(
+    [pad(32, "zkperps:order:trader:v1"), sk]);
+}
+
+constructor(commitment: Bytes<32>, ownerPk: Bytes<32>) {
+  orderCommitment = disclose(commitment);
+  traderPk = disclose(ownerPk);
+  l1SettlementAnchor = disclose(pad(32, ""));
+}
+
+/// ZK: proves knowledge of trader secret matching on-ledger `traderPk` (order authority gate).
+export circuit proveTraderOrderAuthority(): Boolean {
+  const k = traderSecret();
+  assert(k.is_some, "Trader secret not set");
+  const pk = disclose(hashTraderPk(k.value));
+  assert(pk == traderPk, "Not trader");
+  return true;
+}
+
+/// ZK: same authority gate, then records an L1 anchor digest (Midnight ↔ Cardano settlement binding).
+export circuit bindL1SettlementAnchor(anchor: Bytes<32>): [] {
+  const k = traderSecret();
+  assert(k.is_some, "Trader secret not set");
+  const pk = disclose(hashTraderPk(k.value));
+  assert(pk == traderPk, "Not trader");
+  l1SettlementAnchor = disclose(anchor);
+}

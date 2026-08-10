@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ZKPerps — Anti-Front-Running Perpetuals on Cardano</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ── Top Nav ──────────────────────────────────────────────────────────── -->
+<nav class="top-nav">
+  <span class="wordmark">ZKPerps</span>
+  <label>API&nbsp;</label>
+  <input type="text" id="apiBase" value="https://raises-crop-airlines-drums.trycloudflare.com" placeholder="Backend URL">
+  <button class="btn-sm" id="btnConnect">Connect</button>
+  <span class="status-dot" id="statusDot"></span>
+</nav>
+
+<div class="wrap">
+
+  <!-- ── Hero ────────────────────────────────────────────────────────────── -->
+  <section class="hero">
+    <h1>Anti-Front-Running ZK Perpetuals</h1>
+    <p class="subtitle">Privacy-preserving perpetual derivatives on Cardano + Midnight</p>
+    <div class="health-pill err" id="healthPill">Disconnected</div>
+  </section>
+
+  <!-- ── Pipeline ────────────────────────────────────────────────────────── -->
+  <section class="pipeline">
+
+    <!-- Step 1: Create Order Commitment -->
+    <div class="step" id="step-1" data-status="active">
+      <div class="step-header">
+        <div class="step-number">1</div>
+        <div class="step-meta">
+          <span class="phase-badge order">Order</span>
+          <h3>Create Order Commitment</h3>
+          <p>Generate SHA-256 commitment over private order fields with random nonce</p>
+        </div>
+        <div class="step-status-icon" id="icon-1"></div>
+      </div>
+      <div class="step-body">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Pair</label>
+            <input type="text" id="inPairId" value="ADA-USD">
+          </div>
+          <div class="form-group">
+            <label>Side</label>
+            <select id="inSide">
+              <option value="LONG">LONG</option>
+              <option value="SHORT">SHORT</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Price</label>
+            <input type="text" id="inPrice" value="0.52">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Size</label>
+            <input type="text" id="inSize" value="100">
+          </div>
+          <div class="form-group">
+            <label>Leverage</label>
+            <input type="number" id="inLeverage" value="5">
+          </div>
+          <div class="form-group">
+            <label>Margin</label>
+            <input type="text" id="inMargin" value="1000">
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn btn-primary" id="btnCreateOrder">Create Commitment</button>
+        </div>
+        <div class="result" id="result-1" hidden>
+          <div class="result-row"><span class="result-label">Order ID</span><span class="result-value" id="outOrderId"></span></div>
+          <div class="result-row"><span class="result-label">Commitment Hash</span><span class="result-value" id="outCommitment"></span></div>
+          <div class="result-row"><span class="result-label">Nonce</span><span class="result-value" id="outNonce"></span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2: Deploy & Prove Order Contract -->
+    <div class="step" id="step-2" data-status="locked">
+      <div class="step-header">
+        <div class="step-number">2</div>
+        <div class="step-meta">
+          <span class="phase-badge zk">ZK Proof</span>
+          <h3>Deploy & Prove Order Contract</h3>
+          <p>Deploy zkperps-order + proveTraderOrderAuthority + bindL1SettlementAnchor</p>
+        </div>
+        <div class="step-status-icon" id="icon-2"></div>
+      </div>
+      <div class="step-body">
+        <div class="actions">
+          <button class="btn btn-primary" id="btnRunOrder">Run Order Pipeline (3 steps)</button>
+        </div>
+        <div class="result" id="result-2" hidden>
+          <div class="result-row"><span class="result-label">Status</span><span class="result-value" id="outOrderStatus"></span></div>
+          <div class="result-row"><span class="result-label">Output</span><span class="result-value" id="outOrderOutput"></span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3: Run Full ZK Pipeline -->
+    <div class="step" id="step-3" data-status="locked">
+      <div class="step-header">
+        <div class="step-number">3</div>
+        <div class="step-meta">
+          <span class="phase-badge zk">ZK Proof</span>
+          <h3>Run Full 5-Contract Pipeline</h3>
+          <p>Order → Matching → Settlement → Liquidation → Aggregate (takes 3-5 min)</p>
+        </div>
+        <div class="step-status-icon" id="icon-3"></div>
+      </div>
+      <div class="step-body">
+        <div class="actions">
+          <button class="btn btn-primary" id="btnRunPipeline">Run Full Pipeline</button>
+        </div>
+        <div class="result" id="result-3" hidden>
+          <div class="result-row"><span class="result-label">Status</span><span class="result-value" id="outPipelineStatus"></span></div>
+          <div class="result-row"><span class="result-label">Run ID</span><span class="result-value" id="outPipelineId"></span></div>
+          <div class="result-row"><span class="result-label">Output</span><span class="result-value" id="outPipelineOutput"></span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 4: Cardano L1 Anchor -->
+    <div class="step" id="step-4" data-status="locked">
+      <div class="step-header">
+        <div class="step-number">4</div>
+        <div class="step-meta">
+          <span class="phase-badge settlement">Settlement</span>
+          <h3>Anchor on Cardano L1</h3>
+          <p>Submit settlement anchor with inline datum to Plutus V3 script on Cardano Preprod</p>
+        </div>
+        <div class="step-status-icon" id="icon-4"></div>
+      </div>
+      <div class="step-body">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Settlement ID</label>
+            <input type="text" id="inSettlementId" value="settle-demo-ui">
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn btn-primary" id="btnAnchor">Submit Cardano Anchor</button>
+        </div>
+        <div class="result" id="result-4" hidden>
+          <div class="result-row"><span class="result-label">Tx Hash</span><span class="result-value" id="outAnchorTx"></span></div>
+          <div class="result-row"><span class="result-label">Script Address</span><span class="result-value" id="outAnchorAddr"></span></div>
+          <div class="result-row"><span class="result-label">Explorer</span><span class="result-value" id="outAnchorExplorer"></span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 5: Security Validation -->
+    <div class="step" id="step-5" data-status="active">
+      <div class="step-header">
+        <div class="step-number">5</div>
+        <div class="step-meta">
+          <span class="phase-badge security">Security</span>
+          <h3>Front-Running Prevention Validation</h3>
+          <p>Run 4 attack scenarios — order sniping, MEV reorder, sandwich attack</p>
+        </div>
+        <div class="step-status-icon" id="icon-5"></div>
+      </div>
+      <div class="step-body">
+        <div class="actions">
+          <button class="btn btn-primary" id="btnSecurity">Run Attack Scenarios</button>
+        </div>
+        <div id="securityResults"></div>
+      </div>
+    </div>
+
+    <!-- Step 6: Privacy Validation -->
+    <div class="step" id="step-6" data-status="active">
+      <div class="step-header">
+        <div class="step-number">6</div>
+        <div class="step-meta">
+          <span class="phase-badge privacy">Privacy</span>
+          <h3>Privacy Enforcement Validation</h3>
+          <p>Run 8 privacy checks — price, size, identity concealment</p>
+        </div>
+        <div class="step-status-icon" id="icon-6"></div>
+      </div>
+      <div class="step-body">
+        <div class="actions">
+          <button class="btn btn-primary" id="btnPrivacy">Run Privacy Checks</button>
+        </div>
+        <div id="privacyResults"></div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ── Activity Log ────────────────────────────────────────────────────── -->
+  <details class="log-section" open>
+    <summary>Activity Log</summary>
+    <div class="log-grid">
+      <div class="log-col">
+        <h4>Midnight (ZK)</h4>
+        <div class="log-pane" id="logMidnight"></div>
+      </div>
+      <div class="log-col">
+        <h4>Cardano (L1)</h4>
+        <div class="log-pane" id="logCardano"></div>
+      </div>
+    </div>
+  </details>
+
+  <!-- ── Testnet Evidence ────────────────────────────────────────────────── -->
+  <section class="evidence-section">
+    <h3>Testnet Evidence</h3>
+    <button class="btn btn-outline" id="btnLoadEvidence" style="margin-bottom:12px">Load Evidence</button>
+    <div id="evidenceContent"></div>
+  </section>
+
+  <!-- ── Benchmarks ──────────────────────────────────────────────────────── -->
+  <section class="evidence-section" style="margin-top:16px">
+    <h3>Benchmarks</h3>
+    <button class="btn btn-outline" id="btnLoadBench" style="margin-bottom:12px">Load Benchmarks</button>
+    <div id="benchContent"></div>
+  </section>
+
+  <footer class="footer">
+    ZKPerps — Anti-Front-Running Perpetuals on Cardano + Midnight &nbsp;|&nbsp; MIT License &nbsp;|&nbsp; Nucast Labs
+  </footer>
+
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
