@@ -882,3 +882,37 @@ export function scanStops(): Array<{ id: string; reason: string }> {
   }
   return out;
 }
+
+/**
+ * Recompute every account's locked margin from its actual obligations.
+ *
+ * `locked` is maintained incrementally as orders are committed, executed and
+ * closed. If the process dies between locking margin and releasing it — a crash
+ * or a kill mid-flow — the increment survives in the persisted state but the
+ * obligation it was reserving does not, and that collateral stays reserved for
+ * good. Recomputing the total from what is actually outstanding at boot makes
+ * that unrecoverable state self-healing.
+ *
+ * Obligations are: margin behind every open position, plus the margin bound by
+ * every committed-but-unexecuted order, plus the upper bound locked by every
+ * still-sealed order.
+ */
+export function reconcileLockedMargin(): Array<{ address: string; from: number; to: number }> {
+  const st = getState();
+  const owed = new Map<string, number>();
+  const add = (addr: string, amt: number) => owed.set(addr, (owed.get(addr) ?? 0) + amt);
+
+  for (const p of st.positions) if (p.status === "open") add(p.address, p.marginUsd);
+  for (const o of st.orders) if (o.status === "committed") add(o.address, o.marginUsd);
+  for (const s of st.sealedOrders) if (s.status === "sealed") add(s.address, s.maxMarginUsd);
+
+  const changed: Array<{ address: string; from: number; to: number }> = [];
+  for (const [address, acct] of Object.entries(st.accounts)) {
+    const should = owed.get(address) ?? 0;
+    if (Math.abs(acct.locked - should) < 1e-9) continue;
+    changed.push({ address, from: acct.locked, to: should });
+    acct.locked = should;
+  }
+  if (changed.length) persist();
+  return changed;
+}

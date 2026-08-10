@@ -237,28 +237,61 @@ export async function readFeedHistory(
   }
 
   const out: Array<{ atMs: number; price: number }> = [];
+  const missed: typeof targets = [];
   for (let i = 0; i < targets.length; i += concurrency) {
     const chunk = targets.slice(i, i + concurrency);
     const rows = await Promise.all(
       chunk.map(async (t) => {
         try {
-          const [value, decimals] = (await pc.readContract({
+          // Retry the individual read too: a transient RPC failure here leaves a
+          // hole in the series, and a chart with missing minutes is a chart that
+          // looks broken.
+          const [value, decimals] = (await withRetry(
+            () =>
+              pc.readContract({
+                address: ftso,
+                abi: FTSO_ABI,
+                functionName: "getFeedById",
+                args: [feedId as `0x${string}`],
+                blockNumber: t.block,
+              }) as Promise<[bigint, number, bigint]>,
+            3,
+          )) as [bigint, number, bigint];
+          const price = Number(value) / 10 ** Number(decimals);
+          return price > 0 ? { atMs: t.atMs, price } : null;
+        } catch {
+          return null; // block genuinely unavailable (pruned) — skip that minute
+        }
+      }),
+    );
+    rows.forEach((r, j) => (r ? out.push(r) : missed.push(chunk[j])));
+    // Breathe between chunks; a tight loop is what tips the public RPC over.
+    await new Promise((r) => setTimeout(r, 120));
+  }
+
+  // Repair pass: a minute that failed every retry leaves a hole, and a hole is
+  // visible as a gap in the chart. Re-read just those blocks, slowly, once.
+  for (const t of missed) {
+    try {
+      const [value, decimals] = (await withRetry(
+        () =>
+          pc.readContract({
             address: ftso,
             abi: FTSO_ABI,
             functionName: "getFeedById",
             args: [feedId as `0x${string}`],
             blockNumber: t.block,
-          })) as [bigint, number, bigint];
-          const price = Number(value) / 10 ** Number(decimals);
-          return price > 0 ? { atMs: t.atMs, price } : null;
-        } catch {
-          return null; // pruned block or transient RPC error — skip that minute
-        }
-      }),
-    );
-    for (const r of rows) if (r) out.push(r);
-    // Breathe between chunks; a tight loop is what tips the public RPC over.
-    await new Promise((r) => setTimeout(r, 120));
+          }) as Promise<[bigint, number, bigint]>,
+        5,
+      )) as [bigint, number, bigint];
+      const price = Number(value) / 10 ** Number(decimals);
+      if (price > 0) out.push({ atMs: t.atMs, price });
+    } catch {
+      /* genuinely unavailable at that height — leave the minute out */
+    }
+    await new Promise((r) => setTimeout(r, 60));
   }
+
+  out.sort((a, b) => a.atMs - b.atMs);
   return out;
 }

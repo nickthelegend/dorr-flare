@@ -6,15 +6,23 @@ import { validateFeeds, startPricePolling, getPrice } from "./ftso.js";
 import { seedPool, recenter } from "./vamm.js";
 import { loadState, getState } from "./state.js";
 import { flareConfigured, syncLockedMargin } from "./flare.js";
-import { applyFundingTick, scanLiquidations, scanLimitOrders, scanStops, settleSealedBatch } from "./trading.js";
+import { applyFundingTick, scanLiquidations, scanLimitOrders, scanStops, settleSealedBatch, reconcileLockedMargin } from "./trading.js";
 
 async function main() {
   console.log("dorr operator starting…");
   loadState();
 
+  // Heal any margin stranded by a crash mid-flow before serving a single request.
+  for (const r of reconcileLockedMargin()) {
+    console.log(`[margin] ${r.address.slice(0, 10)}… locked ${r.from.toFixed(6)} → ${r.to.toFixed(6)} (recomputed from open obligations)`);
+  }
+
   await validateFeeds();
   startPricePolling();
   warmChartHistory();
+  // Downtime leaves holes in the live samples; re-check periodically so the
+  // chart repairs itself instead of carrying a gap until the next restart.
+  setInterval(() => warmChartHistory(), 10 * 60 * 1000);
 
   // Seed vAMM pools once prices exist, then keep them centered on FTSO.
   const seeded = new Set<string>();

@@ -367,3 +367,34 @@ test("ATTACK LAB: the brute-force is real work, not a constant", async () => {
   }));
   expect(again.privateRun.commitmentHash).not.toBe(lab.privateRun.commitmentHash);
 });
+
+// ─── margin accounting self-heals ────────────────────────────────────────────
+test("MARGIN: locked is recomputed from real obligations, healing a stranded lock", async () => {
+  await post("/demo/reset");
+  await post("/demo/seed", { address: USER, dusd: 50_000 });
+  setPrice(0.15);
+
+  const state = await import("../src/state.js");
+
+  // Simulate a crash mid-flow: margin reserved, but nothing outstanding to back it.
+  state.account(USER).locked = 1_234;
+  const healed = trading.reconcileLockedMargin();
+  expect(healed.some((h) => h.address === USER && h.to === 0)).toBe(true);
+  expect(state.account(USER).locked).toBe(0);
+
+  // With a real open position the recompute must NOT release its margin.
+  const commit = await j(await post("/orders/commit", {
+    address: USER, marketId: FLR, side: "LONG", marginUsd: 1_000, leverage: 5, privacyMode: "private",
+  }));
+  await post(`/orders/${commit.orderId}/execute`);
+  trading.reconcileLockedMargin();
+  expect(state.account(USER).locked).toBe(1_000);
+
+  // A committed-but-unexecuted order still counts as an obligation.
+  await post("/orders/commit", {
+    address: USER, marketId: FLR, side: "LONG", marginUsd: 500, leverage: 2, privacyMode: "private",
+    orderType: "limit", limitPrice: 0.10,
+  });
+  trading.reconcileLockedMargin();
+  expect(state.account(USER).locked).toBe(1_500);
+});

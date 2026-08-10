@@ -20,12 +20,18 @@ export function useHealth() {
   });
 }
 
-/** 5 dorr markets polled every 3s — the app's price heartbeat. */
+/**
+ * The price heartbeat. Like `useHealth` this must keep polling while the tab is
+ * in the background: without it the interval pauses, the query never errors, and
+ * the chart goes on showing the last mark and index as though they were current
+ * — stale prices presented as live is worse than no prices at all.
+ */
 export function useMarkets() {
   return useQuery<Market[]>({
     queryKey: ["operator", "markets"],
     queryFn: operator.markets,
     refetchInterval: 3_000,
+    refetchIntervalInBackground: true,
     retry: false,
     placeholderData: (prev) => prev,
   });
@@ -41,6 +47,7 @@ export function useAccount(address: string | undefined) {
     queryKey: ["operator", "account", address],
     queryFn: () => operator.account(address!),
     enabled: !!address,
+    refetchIntervalInBackground: true,
     refetchInterval: 5_000,
     retry: false,
   });
@@ -51,6 +58,7 @@ export function usePositions(address: string | undefined) {
     queryKey: ["operator", "positions", address],
     queryFn: () => operator.positions(address!),
     enabled: !!address,
+    refetchIntervalInBackground: true,
     refetchInterval: 3_000,
     retry: false,
     placeholderData: (prev) => prev,
@@ -63,6 +71,7 @@ export function useRestingOrders(address: string | undefined) {
     queryKey: ["operator", "resting-orders", address],
     queryFn: () => operator.restingOrders(address!),
     enabled: !!address,
+    refetchIntervalInBackground: true,
     refetchInterval: 3_000,
     retry: false,
     placeholderData: (prev) => prev,
@@ -73,6 +82,7 @@ export function useFeed() {
   return useQuery({
     queryKey: ["operator", "feed"],
     queryFn: operator.feed,
+    refetchIntervalInBackground: true,
     refetchInterval: 3_000,
     retry: false,
     placeholderData: (prev) => prev,
@@ -88,6 +98,7 @@ export function useEvents(address: string | undefined) {
   return useQuery({
     queryKey: ["operator", "events", address ?? "global"],
     queryFn: () => operator.events(address),
+    refetchIntervalInBackground: true,
     refetchInterval: 3_000,
     retry: false,
     placeholderData: (prev) => prev,
@@ -98,6 +109,7 @@ export function useAnchors() {
   return useQuery({
     queryKey: ["operator", "anchors"],
     queryFn: operator.anchors,
+    refetchIntervalInBackground: true,
     refetchInterval: 10_000,
     retry: false,
     placeholderData: (prev) => prev,
@@ -109,6 +121,7 @@ export function useStats() {
   return useQuery({
     queryKey: ["operator", "stats"],
     queryFn: operator.stats,
+    refetchIntervalInBackground: true,
     refetchInterval: 5_000,
     retry: false,
     placeholderData: (prev) => prev,
@@ -120,6 +133,7 @@ export function useSolvency() {
   return useQuery({
     queryKey: ["operator", "solvency"],
     queryFn: operator.solvency,
+    refetchIntervalInBackground: true,
     refetchInterval: 15_000,
     retry: false,
     placeholderData: (prev) => prev,
@@ -136,6 +150,7 @@ export function useJob(jobId: string | undefined) {
     queryFn: () => operator.job(jobId!),
     enabled: !!jobId,
     retry: false,
+    refetchIntervalInBackground: true,
     refetchInterval: (query) => {
       const job = query.state.data;
       if (job && job.status !== "running") return false;

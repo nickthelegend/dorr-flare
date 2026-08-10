@@ -134,6 +134,29 @@ export function walletClient(): WalletClient {
   return _wallet;
 }
 
+/**
+ * Serialize every write from the relayer account.
+ *
+ * All on-chain writes share one relayer key, and viem reads the pending nonce
+ * per call. Two writes issued close together — a partial close releasing margin
+ * and a margin top-up locking it, say — both read the same nonce and the second
+ * is rejected by the node ("Missing or invalid parameters"). Chaining them means
+ * the next write only builds its transaction once the previous one has a
+ * receipt, so nonces are strictly sequential.
+ */
+let relayerQueue: Promise<unknown> = Promise.resolve();
+
+function withRelayer<T>(fn: () => Promise<T>): Promise<T> {
+  const run = relayerQueue.then(fn, fn);
+  // Keep the chain alive even when a write fails, or one rejection would
+  // permanently wedge every later transaction.
+  relayerQueue = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
 export function flareConfigured(): boolean {
   return Boolean(env.flare.vault && env.flare.settlement);
 }
@@ -279,7 +302,7 @@ export async function settleBatchOnChain(p: SettleBatchParams): Promise<{ txHash
   const wc = walletClient();
   const account = relayer();
 
-  const txHash = await wc.writeContract({
+  const txHash = await withRelayer(() => wc.writeContract({
     address: settlementAddress(),
     abi: SETTLEMENT_ABI,
     functionName: "settleBatch",
@@ -298,7 +321,7 @@ export async function settleBatchOnChain(p: SettleBatchParams): Promise<{ txHash
     value: p.feeWei ?? 0n,
     account,
     chain: flareChain,
-  });
+  }));
 
   await publicClient().waitForTransactionReceipt({ hash: txHash });
   return { txHash, explorerUrl: explorerTx(txHash) };
@@ -343,14 +366,16 @@ export async function syncLockedMargin(trader: string, desiredLockedUsd: number)
   const increasing = desired > current;
   const amount = increasing ? desired - current : current - desired;
 
-  const txHash = await wc.writeContract({
-    address: settlementAddress(),
-    abi: SETTLEMENT_ABI,
-    functionName: increasing ? "lockMargin" : "releaseMargin",
-    args: [who, amount],
-    account,
-    chain: flareChain,
+  await withRelayer(async () => {
+    const txHash = await wc.writeContract({
+      address: settlementAddress(),
+      abi: SETTLEMENT_ABI,
+      functionName: increasing ? "lockMargin" : "releaseMargin",
+      args: [who, amount],
+      account,
+      chain: flareChain,
+    });
+    await publicClient().waitForTransactionReceipt({ hash: txHash });
   });
-  await publicClient().waitForTransactionReceipt({ hash: txHash });
   return unitsToUsd(increasing ? amount : -amount);
 }

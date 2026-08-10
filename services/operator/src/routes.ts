@@ -88,8 +88,12 @@ const historyFilled = new Map<string, Promise<void>>();
  * duplicate archive calls, and skipped entirely once enough history exists.
  */
 export function ensureHistory(marketId: string, feedId: string, minutes = 360): Promise<void> {
-  const have = getState().candles[marketId]?.length ?? 0;
-  if (have >= minutes) return Promise.resolve();
+  const series = getState().candles[marketId] ?? [];
+  // Length alone is not enough: downtime punches holes into an already-long
+  // series (no live samples while the operator is stopped), and those minutes
+  // render as gaps in the chart forever because the series still looks "full".
+  const hasHole = series.some((c, i) => i > 0 && c.t - series[i - 1].t > 60);
+  if (series.length >= minutes && !hasHole) return Promise.resolve();
 
   const running = historyFilled.get(marketId);
   if (running) return running;
@@ -99,7 +103,8 @@ export function ensureHistory(marketId: string, feedId: string, minutes = 360): 
       const samples = await readFeedHistory(feedId, minutes);
       for (const s of samples) recordPriceSample(marketId, s.price, s.atMs);
       persist();
-      console.log(`[chart] ${marketId}: reconstructed ${samples.length} min of FTSO history from chain`);
+      const what = hasHole ? "re-read (filling gaps in)" : "reconstructed";
+      console.log(`[chart] ${marketId}: ${what} ${samples.length} min of FTSO history from chain`);
     } catch (e) {
       // Chart falls back to live-only; never fail a request over history.
       console.error(`[chart] history backfill failed for ${marketId}: ${String(e).slice(0, 140)}`);
