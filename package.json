@@ -2,16 +2,20 @@
   "name": "dorr",
   "private": true,
   "version": "0.1.0",
-  "description": "dorr — privacy-preserving perpetuals on Cardano + Midnight (anti-front-running via ZK order commitments)",
+  "description": "dorr — privacy-preserving perpetual futures on Flare (FXRP margin, drand-sealed orders, FTSO v2 settlement)",
   "workspaces": [
     "apps/*",
     "packages/*",
     "services/*",
-    "tools/*"
+    "tools"
   ],
   "scripts": {
     "web": "bun run --cwd apps/web dev",
     "operator": "bun run --cwd services/operator dev",
+    "enclave": "bun run --cwd services/operator enclave",
+    "test": "bun test packages services",
+    "test:contracts": "forge test --root contracts",
+    "typecheck": "bun run --cwd apps/web typecheck",
     "gen:wallet": "bun run tools/scripts/gen-wallet.ts"
   }
 }

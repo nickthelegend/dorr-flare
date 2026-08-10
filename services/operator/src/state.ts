@@ -15,8 +15,6 @@ export interface Account {
   /** FXRP margin credited from on-chain vault deposits, ± realized PnL (free + locked). */
   balance: number;
   locked: number;
-  /** vault deposit txs already credited (idempotency). */
-  creditedUtxos: string[];
   /**
    * Realized PnL (net of fees and funding) accumulated off-chain by the vAMM.
    *
@@ -49,15 +47,6 @@ export interface DorrOrder {
   commitmentHash: string;
   status: "committed" | "executed" | "cancelled" | "failed";
   createdAt: string;
-  midnight?: {
-    contractAddress?: string;
-    deployTx?: string;
-    authorityProofTx?: string;
-    anchorBindTx?: string;
-    matchProofTx?: string;
-  };
-  /** Optional Cardano L1 proof-of-existence for the commitment (public, hides contents). */
-  commitAnchor?: { txHash: string; at: string };
   executedFill?: { avgPrice: number; priceImpactBps: number; notional: number };
 }
 
@@ -289,7 +278,7 @@ export function logEvent(e: Omit<DorrEvent, "at"> & { at?: string }): void {
 
 export function account(address: string): Account {
   if (!state.accounts[address]) {
-    state.accounts[address] = { address, balance: 0, locked: 0, creditedUtxos: [] };
+    state.accounts[address] = { address, balance: 0, locked: 0 };
   }
   return state.accounts[address];
 }

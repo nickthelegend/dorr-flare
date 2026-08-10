@@ -17,9 +17,24 @@ async function main() {
     console.log(`[margin] ${r.address.slice(0, 10)}… locked ${r.from.toFixed(6)} → ${r.to.toFixed(6)} (recomputed from open obligations)`);
   }
 
+  // Listen first, validate after. Feed validation now retries each feed against a
+  // public RPC that rate-limits, so awaiting it before `serve()` left the whole
+  // API unreachable for seconds on every restart — long enough for the terminal's
+  // health chip to flip to "offline" and for in-flight requests to fail outright.
+  // `/markets` already reports a price-less market as such, so serving early is
+  // honest: the venue is up, the prices arrive a moment later.
+  serve({ fetch: app.fetch, port: env.port });
+  console.log(`dorr operator listening on :${env.port}`);
+
   await validateFeeds();
   startPricePolling();
-  warmChartHistory();
+  // Live prices first. The archive walk is hundreds of `eth_call`s and the public
+  // Coston2 RPC starts answering 429 under that load — running it the instant the
+  // process boots put it in direct competition with feed validation and the first
+  // polls, which is how a restart could leave every market disabled. The chart
+  // filling in twenty seconds late is not something anyone notices; a venue with
+  // no prices is.
+  setTimeout(() => warmChartHistory(), 20_000);
   // Downtime leaves holes in the live samples; re-check periodically so the
   // chart repairs itself instead of carrying a gap until the next restart.
   setInterval(() => warmChartHistory(), 10 * 60 * 1000);
@@ -93,8 +108,6 @@ async function main() {
     }, 60_000);
   }
 
-  serve({ fetch: app.fetch, port: env.port });
-  console.log(`dorr operator listening on :${env.port}`);
 }
 
 main().catch((e) => {

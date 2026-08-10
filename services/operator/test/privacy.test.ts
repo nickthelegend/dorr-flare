@@ -50,7 +50,7 @@ test("brute-forcing the nonce is infeasible — a bot guessing everything but th
 });
 
 // ── the public projection leaks nothing for a private order ──────────────────
-const secret = { side: "LONG" as const, sizeBase: 31787.83, leverage: 5, price: 0.157, address: "addr_test1qqtrader", nonce: base.nonce };
+const secret = { side: "LONG" as const, sizeBase: 31787.83, leverage: 5, price: 0.157, address: "0x3333333333333333333333333333333333333333", nonce: base.nonce };
 
 test("PRIVATE order: public feed view exposes only market + commitment hash", () => {
   const view = publicFeedView({

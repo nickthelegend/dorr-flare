@@ -5,8 +5,10 @@
  */
 
 import { test, expect, beforeAll } from "bun:test";
+import { signedPost, testTrader } from "./helpers/signed-request.js";
 
-const USER = "addr_test1qqfeatureuser";
+const USER_ACCOUNT = testTrader(0);
+const USER = USER_ACCOUNT.address;
 let app: { request: (path: string, init?: RequestInit) => Promise<Response> };
 let pyth: typeof import("../src/ftso.js");
 let vamm: typeof import("../src/vamm.js");
@@ -16,8 +18,7 @@ const FLR = "FLR-USD";
 let flrFeed: string;
 
 const j = async (r: Response) => (await r.json()) as any;
-const post = (p: string, b?: unknown) =>
-  app.request(p, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b ?? {}) });
+const post = signedPost(() => app, USER_ACCOUNT);
 const get = (p: string) => app.request(p);
 async function pollJob(id: string) {
   for (let i = 0; i < 60; i++) {
@@ -45,7 +46,7 @@ beforeAll(async () => {
 
 test("private LIMIT order rests invisibly, then triggers when price crosses", async () => {
   await post("/demo/reset");
-  await post("/demo/seed", { address: USER, dusd: 50_000 });
+  await post("/demo/seed", { address: USER, fxrp: 50_000 });
   setPrice(0.15);
 
   // LONG limit to buy at 0.14 — current price 0.15, so it should NOT fill yet.
@@ -78,7 +79,7 @@ test("private LIMIT order rests invisibly, then triggers when price crosses", as
 
 test("hidden STOP-LOSS closes the position when price crosses (anti stop-hunting)", async () => {
   await post("/demo/reset");
-  await post("/demo/seed", { address: USER, dusd: 50_000 });
+  await post("/demo/seed", { address: USER, fxrp: 50_000 });
   setPrice(0.15);
   const commit = await j(await post("/orders/commit", {
     address: USER, marketId: FLR, side: "LONG", marginUsd: 1000, leverage: 5, privacyMode: "private",
@@ -105,7 +106,7 @@ test("hidden STOP-LOSS closes the position when price crosses (anti stop-hunting
 
 test("PARTIAL close halves the position and settles proportional PnL", async () => {
   await post("/demo/reset");
-  await post("/demo/seed", { address: USER, dusd: 50_000 });
+  await post("/demo/seed", { address: USER, fxrp: 50_000 });
   setPrice(0.15);
   const commit = await j(await post("/orders/commit", {
     address: USER, marketId: FLR, side: "LONG", marginUsd: 1000, leverage: 5, privacyMode: "private",
@@ -125,7 +126,7 @@ test("PARTIAL close halves the position and settles proportional PnL", async () 
 
 test("ADD margin lowers leverage + moves liq price; over-removal is refused", async () => {
   await post("/demo/reset");
-  await post("/demo/seed", { address: USER, dusd: 50_000 });
+  await post("/demo/seed", { address: USER, fxrp: 50_000 });
   setPrice(0.15);
   const commit = await j(await post("/orders/commit", {
     address: USER, marketId: FLR, side: "LONG", marginUsd: 1000, leverage: 10, privacyMode: "private",
@@ -145,7 +146,7 @@ test("ADD margin lowers leverage + moves liq price; over-removal is refused", as
 
 test("SLIPPAGE guard rejects a fill worse than tolerance, order stays resting", async () => {
   await post("/demo/reset");
-  await post("/demo/seed", { address: USER, dusd: 500_000 });
+  await post("/demo/seed", { address: USER, fxrp: 500_000 });
   setPrice(0.15);
   // large (but within pool depth) size + 1bp tolerance → the fill's impact blows past it
   const commit = await j(await post("/orders/commit", {

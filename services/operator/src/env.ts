@@ -9,8 +9,19 @@ dotenv({ path: resolve(DORR_ROOT, ".env") });
 
 export const env = {
   port: Number(process.env.OPERATOR_PORT || 8790),
-  /** When true, commit/execute/close/withdraw require a valid EIP-191 wallet signature. */
-  authRequired: process.env.DORR_AUTH === "1" || process.env.DORR_AUTH === "required",
+  /**
+   * Every value-moving call (commit/seal/execute/close/margin/stops/cancel/
+   * disclose) must carry an EIP-191 signature from the acting address.
+   *
+   * Defaults to ON and must be turned off deliberately. It was opt-in once, and
+   * with it unset the operator would happily open a leveraged position against
+   * any address that had collateral in the vault — the caller never had to prove
+   * they owned it. Failing closed is the only safe default for an endpoint that
+   * can spend someone else's margin.
+   */
+  authRequired: !["0", "off", "false", "none"].includes(
+    (process.env.DORR_AUTH ?? "").toLowerCase(),
+  ),
   flare: {
     rpcUrl: process.env.FLARE_RPC_URL || "https://coston2-api.flare.network/ext/C/rpc",
     chainId: Number(process.env.FLARE_CHAIN_ID || 114),

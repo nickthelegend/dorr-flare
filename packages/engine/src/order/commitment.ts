@@ -12,7 +12,11 @@ export type OrderCommitmentInput = {
 
 /**
  * Deterministic 32-byte commitment (hex) over private order fields.
- * Used off-chain and referenced on Midnight / Cardano metadata.
+ *
+ * Computed in the browser, published as the only public trace of an order, and
+ * recorded in the epoch's membership root by DorrBatchSettlement on Flare. An
+ * auditor handed the preimage recomputes this digest and checks it against the
+ * value already on-chain.
  */
 export function orderCommitmentHex(input: OrderCommitmentInput): string {
   const canonical = JSON.stringify({

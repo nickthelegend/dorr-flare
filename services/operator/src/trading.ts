@@ -303,8 +303,9 @@ export function unrealizedPnl(pos: DorrPosition, mark: number): number {
 
 /**
  * Step 3 — CLOSE (or liquidate). Fills the opposite side on the vAMM, settles
- * PnL to the account, then runs the ZK settlement transition, anchors the
- * digest on Cardano preprod, and binds the anchor back on the order contract.
+ * realized PnL to the account, releases the margin it was holding, and records a
+ * settlement digest over the order commitment and the close record — enough to
+ * prove later what settled without revealing what it was.
  */
 export function closePosition(
   positionId: string,
@@ -907,12 +908,22 @@ export function reconcileLockedMargin(): Array<{ address: string; from: number; 
   for (const s of st.sealedOrders) if (s.status === "sealed") add(s.address, s.maxMarginUsd);
 
   const changed: Array<{ address: string; from: number; to: number }> = [];
+  let dusted = false;
   for (const [address, acct] of Object.entries(st.accounts)) {
     const should = owed.get(address) ?? 0;
-    if (Math.abs(acct.locked - should) < 1e-9) continue;
+    if (acct.locked === should) continue;
+    // Below the epsilon this is float residue from add/subtract cycles, not a
+    // real obligation — snap it out silently. Skipping the assignment (as this
+    // once did) left values like 5.55e-16 locked forever, because every later
+    // pass saw them as "close enough" and moved on.
+    if (Math.abs(acct.locked - should) < 1e-9) {
+      acct.locked = should;
+      dusted = true;
+      continue;
+    }
     changed.push({ address, from: acct.locked, to: should });
     acct.locked = should;
   }
-  if (changed.length) persist();
+  if (changed.length || dusted) persist();
   return changed;
 }

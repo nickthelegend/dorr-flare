@@ -9,10 +9,14 @@
  */
 
 import { test, expect, beforeAll } from "bun:test";
+import { signedPost, testTrader } from "./helpers/signed-request.js";
 import { clearBatchUniform, runBatchAuctionDemo, batchDigest, type BatchOrder } from "../src/batch.js";
 import { divergenceBps, oracleDiverged, MAX_ORACLE_DIVERGENCE_BPS } from "../src/trading-math.js";
 
-const USER = "addr_test1qqv2user";
+const USER_ACCOUNT = testTrader(0);
+const USER2_ACCOUNT = testTrader(1);
+const USER2 = USER2_ACCOUNT.address;
+const USER = USER_ACCOUNT.address;
 let app: { request: (path: string, init?: RequestInit) => Promise<Response> };
 let pyth: typeof import("../src/ftso.js");
 let vamm: typeof import("../src/vamm.js");
@@ -22,8 +26,7 @@ const FLR = "FLR-USD";
 let flrFeed: string;
 
 const j = async (r: Response) => (await r.json()) as any;
-const post = (p: string, b?: unknown) =>
-  app.request(p, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b ?? {}) });
+const post = signedPost(() => app, USER_ACCOUNT);
 const get = (p: string) => app.request(p);
 async function pollJob(id: string) {
   for (let i = 0; i < 60; i++) {
@@ -125,7 +128,7 @@ test("ORACLE GUARD (pure): flags a mark that drifts past the threshold", () => {
 
 test("ORACLE GUARD (wired): execute is refused when the venue mark ≠ oracle", async () => {
   await post("/demo/reset");
-  await post("/demo/seed", { address: USER, dusd: 500_000 });
+  await post("/demo/seed", { address: USER, fxrp: 500_000 });
   setPrice(0.15);
   const commit = await j(await post("/orders/commit", {
     address: USER, marketId: FLR, side: "LONG", marginUsd: 1000, leverage: 5, privacyMode: "private",
@@ -143,7 +146,7 @@ test("ORACLE GUARD (wired): execute is refused when the venue mark ≠ oracle", 
 // ─── cancel a resting order ──────────────────────────────────────────────────
 test("CANCEL: a resting order is cancellable and releases its margin", async () => {
   await post("/demo/reset");
-  await post("/demo/seed", { address: USER, dusd: 50_000 });
+  await post("/demo/seed", { address: USER, fxrp: 50_000 });
   setPrice(0.15);
   const commit = await j(await post("/orders/commit", {
     address: USER, marketId: FLR, side: "LONG", marginUsd: 1000, leverage: 5,
@@ -167,7 +170,7 @@ test("CANCEL: a resting order is cancellable and releases its margin", async () 
 
 test("CANCEL: an executed order cannot be cancelled", async () => {
   await post("/demo/reset");
-  await post("/demo/seed", { address: USER, dusd: 50_000 });
+  await post("/demo/seed", { address: USER, fxrp: 50_000 });
   setPrice(0.15);
   const commit = await j(await post("/orders/commit", {
     address: USER, marketId: FLR, side: "LONG", marginUsd: 1000, leverage: 5, privacyMode: "private",
@@ -183,7 +186,7 @@ test("CANCEL: an executed order cannot be cancelled", async () => {
 // ─── stats ───────────────────────────────────────────────────────────────────
 test("STATS: open interest, skew and funding surface after a trade", async () => {
   await post("/demo/reset");
-  await post("/demo/seed", { address: USER, dusd: 100_000 });
+  await post("/demo/seed", { address: USER, fxrp: 100_000 });
   setPrice(0.15);
   const commit = await j(await post("/orders/commit", {
     address: USER, marketId: FLR, side: "LONG", marginUsd: 2000, leverage: 5, privacyMode: "private",
@@ -206,7 +209,7 @@ test("STATS: open interest, skew and funding surface after a trade", async () =>
 // ─── per-market open-interest risk cap ───────────────────────────────────────
 test("RISK CAP: per-market open-interest cap rejects over-commitment", async () => {
   await post("/demo/reset");
-  await post("/demo/seed", { address: USER, dusd: 2_000_000 });
+  await post("/demo/seed", { address: USER, fxrp: 2_000_000 });
   setPrice(0.15);
   // FLR cap is 500k notional. 90k margin × 5 = 450k notional → OK.
   const a = await j(await post("/orders/commit", {
@@ -227,16 +230,16 @@ test("RISK CAP: per-market open-interest cap rejects over-commitment", async () 
 // ─── batch preview over real resting orders ──────────────────────────────────
 test("BATCH PREVIEW: resting committed orders clear at one uniform price", async () => {
   await post("/demo/reset");
-  await post("/demo/seed", { address: USER, dusd: 200_000 });
-  await post("/demo/seed", { address: USER + "2", dusd: 200_000 });
+  await post("/demo/seed", { address: USER, fxrp: 200_000 });
+  await post("/demo/seed", { address: USER2, fxrp: 200_000 });
   setPrice(0.15);
   // two committed market orders, opposite sides, left un-executed (resting epoch)
   const a = await j(await post("/orders/commit", {
     address: USER, marketId: FLR, side: "LONG", marginUsd: 3000, leverage: 4, privacyMode: "private",
   }));
   const b = await j(await post("/orders/commit", {
-    address: USER + "2", marketId: FLR, side: "SHORT", marginUsd: 1000, leverage: 4, privacyMode: "private",
-  }));
+    address: USER2, marketId: FLR, side: "SHORT", marginUsd: 1000, leverage: 4, privacyMode: "private",
+  }, USER2_ACCOUNT));
   await pollJob(a.jobId);
   await pollJob(b.jobId);
 
@@ -251,7 +254,7 @@ test("BATCH PREVIEW: resting committed orders clear at one uniform price", async
 // ─── liquidation keeper (wired) ──────────────────────────────────────────────
 test("LIQUIDATION: the keeper closes a position that falls below maintenance margin", async () => {
   await post("/demo/reset");
-  await post("/demo/seed", { address: USER, dusd: 50_000 });
+  await post("/demo/seed", { address: USER, fxrp: 50_000 });
   setPrice(0.15);
 
   // 10x LONG — a ~10% adverse move wipes the margin well past the 5% floor.
@@ -285,7 +288,7 @@ test("LIQUIDATION: the keeper closes a position that falls below maintenance mar
 
 test("LIQUIDATION: a healthy position is left alone", async () => {
   await post("/demo/reset");
-  await post("/demo/seed", { address: USER, dusd: 50_000 });
+  await post("/demo/seed", { address: USER, fxrp: 50_000 });
   setPrice(0.15);
 
   const commit = await j(await post("/orders/commit", {
@@ -304,7 +307,7 @@ test("LIQUIDATION: a healthy position is left alone", async () => {
 // ─── funding keeper (wired) ──────────────────────────────────────────────────
 test("FUNDING: the tick accrues on open positions and records history", async () => {
   await post("/demo/reset");
-  await post("/demo/seed", { address: USER, dusd: 50_000 });
+  await post("/demo/seed", { address: USER, fxrp: 50_000 });
   setPrice(0.15);
 
   const commit = await j(await post("/orders/commit", {
@@ -371,7 +374,7 @@ test("ATTACK LAB: the brute-force is real work, not a constant", async () => {
 // ─── margin accounting self-heals ────────────────────────────────────────────
 test("MARGIN: locked is recomputed from real obligations, healing a stranded lock", async () => {
   await post("/demo/reset");
-  await post("/demo/seed", { address: USER, dusd: 50_000 });
+  await post("/demo/seed", { address: USER, fxrp: 50_000 });
   setPrice(0.15);
 
   const state = await import("../src/state.js");

@@ -148,8 +148,6 @@ export interface RestingOrder {
   limitPrice: number;
   commitmentHash: string;
   createdAt: string;
-  /** On-chain proof-of-existence for the commitment, when the epoch settled. */
-  commitAnchor?: { txHash: string; at: string };
 }
 
 export interface ExecuteResult {
@@ -341,7 +339,6 @@ export interface Solvency {
   collateralizationRatio: number | null;
   vaultAddress: string;
   collateralAddress: string;
-  vaultUtxos: number;
   attestation: string;
   at: string;
   note: string;
@@ -542,14 +539,6 @@ export const operator = {
     postSigned<{ success: boolean; order: Order }>(
       `/orders/${encodeURIComponent(orderId)}/cancel`,
       "cancel",
-      { orderId },
-    ),
-
-  /** Per-order L1 anchoring is not used on Flare — the batch records membership instead. */
-  anchorCommit: (orderId: string) =>
-    postSigned<{ success: boolean; txHash: string; explorerUrl: string; order: Order }>(
-      `/orders/${encodeURIComponent(orderId)}/anchor-commit`,
-      "anchor-commit",
       { orderId },
     ),
 

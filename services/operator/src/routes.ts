@@ -108,7 +108,14 @@ export function ensureHistory(marketId: string, feedId: string, minutes = 360): 
     } catch (e) {
       // Chart falls back to live-only; never fail a request over history.
       console.error(`[chart] history backfill failed for ${marketId}: ${String(e).slice(0, 140)}`);
-      historyFilled.delete(marketId); // allow a later retry
+    } finally {
+      // Only the *in-flight* walk is deduped. Keeping the settled promise here
+      // made the ten-minute repair sweep a no-op after its first pass: every
+      // later call got the old resolved promise back and never re-read, so a
+      // hole punched by downtime survived until the next restart — which is the
+      // opposite of what the sweep exists to do. The `hasHole`/length check
+      // above is what stops this from re-reading when there is nothing to fix.
+      historyFilled.delete(marketId);
     }
   })();
   historyFilled.set(marketId, job);
@@ -276,7 +283,22 @@ async function reconcileVault(address: string): Promise<number> {
  */
 async function lockMarginForTrader(address: string): Promise<void> {
   if (!flareConfigured()) return;
-  await syncLockedMargin(address, account(address).locked);
+  // Retried, because refusing the order is the fallback and that is a harsh
+  // outcome for a momentary 429 from a public RPC. Safe to repeat: the call
+  // re-reads the vault's current `locked` and derives the delta from it, so a
+  // second attempt after a partial failure converges on the same target rather
+  // than double-locking.
+  let last: unknown;
+  for (let i = 0; i < 3; i++) {
+    try {
+      await syncLockedMargin(address, account(address).locked);
+      return;
+    } catch (e) {
+      last = e;
+      if (i < 2) await new Promise((r) => setTimeout(r, 400 * 2 ** i));
+    }
+  }
+  throw last;
 }
 
 /** Best-effort release; failures self-heal on the next reconcile. */
@@ -515,7 +537,13 @@ app.post("/orders/:id/cancel", async (c) => {
   }
 });
 
-// anchor an order's commitment on Cardano L1 (public proof-of-existence, contents hidden)
+/**
+ * Per-order L1 anchoring is not how Flare records membership: the
+ * epoch's membership root is what DorrBatchSettlement records on-chain, and it
+ * covers every order in the batch at once. Kept as a documented refusal so an
+ * old client gets an explanation rather than a 404, and answered 501 like the
+ * other deliberate refusals — a 500 reads as a crash in a network tab.
+ */
 app.post("/orders/:id/anchor-commit", async (c) => {
   const id = c.req.param("id");
   const body = await c.req.json().catch(() => ({}));
@@ -531,7 +559,7 @@ app.post("/orders/:id/anchor-commit", async (c) => {
       order,
     });
   } catch (e) {
-    return bad(c, String(e instanceof Error ? e.message : e), 500);
+    return bad(c, String(e instanceof Error ? e.message : e), 501);
   }
 });
 
@@ -540,7 +568,7 @@ app.get("/orders/resting/:address", (c) => {
   const address = c.req.param("address");
   const orders = getState().orders
     .filter((o) => o.address === address && o.status === "committed" && o.orderType === "limit")
-    .map((o) => ({ id: o.id, marketId: o.marketId, side: o.side, sizeBase: o.sizeBase, leverage: o.leverage, marginUsd: o.marginUsd, limitPrice: o.limitPrice, commitmentHash: o.commitmentHash, createdAt: o.createdAt, commitAnchor: o.commitAnchor }));
+    .map((o) => ({ id: o.id, marketId: o.marketId, side: o.side, sizeBase: o.sizeBase, leverage: o.leverage, marginUsd: o.marginUsd, limitPrice: o.limitPrice, commitmentHash: o.commitmentHash, createdAt: o.createdAt }));
   return c.json({ orders });
 });
 
@@ -584,8 +612,26 @@ app.get("/config", async (c) => {
   return c.json(cfg);
 });
 
-// ─── demo admin: repeatable, snappy stage runs ───────────────────────────────
+// ─── test-only admin ─────────────────────────────────────────────────────────
+/**
+ * `/demo/reset` and `/demo/seed` are indispensable to the in-process test suite
+ * and indefensible on a live operator.
+ *
+ * `reset` wipes every account, position and anchor; `seed` credits spendable
+ * margin that no FXRP backs. The second is the dangerous one: `/ops/solvency`
+ * derives liabilities from the vault *on-chain*, so phantom balance never shows
+ * up there — the venue would report "fully backed" while an address traded on
+ * margin that does not exist. Neither is called by any client.
+ *
+ * Bun sets NODE_ENV=test for `bun test`, which is also what points the ledger at
+ * `state.test.json`, so the same flag gates both.
+ */
+const testOnly = (c: Context) =>
+  process.env.NODE_ENV === "test" ? null : bad(c, "not found", 404);
+
 app.post("/demo/reset", (c) => {
+  const gate = testOnly(c);
+  if (gate) return gate;
   const s = getState();
   s.accounts = {};
   s.orders = [];
@@ -600,11 +646,13 @@ app.post("/demo/reset", (c) => {
   return c.json({ ok: true, reset: true });
 });
 
-/** Instant off-chain margin so a demo needn't wait on preprod deposit confirms. */
+/** Test-only: unbacked margin so unit tests needn't deposit real FXRP. */
 app.post("/demo/seed", async (c) => {
+  const gate = testOnly(c);
+  if (gate) return gate;
   const body = await c.req.json().catch(() => ({}));
   const address = String(body.address || "");
-  const fxrp = Math.min(Number(body.fxrp ?? body.dusd ?? 50_000), 1_000_000);
+  const fxrp = Math.min(Number(body.fxrp ?? 50_000), 1_000_000);
   if (!address) return bad(c, "address required");
   const acct = account(address);
   acct.balance = fxrp;
@@ -820,7 +868,10 @@ app.get("/flare/batch/:epochId", async (c) => {
   try {
     return c.json(await getBatchOnChain(c.req.param("epochId") as `0x${string}`));
   } catch (e) {
-    return bad(c, String(e instanceof Error ? e.message : e), 500);
+    // 503, and truncated: a failed chain read is an upstream problem, not a bug
+    // here, and viem's error carries the RPC's whole HTML body — dumping that
+    // into a JSON error is unreadable and leaks internals for no benefit.
+    return bad(c, `batch read failed: ${String(e instanceof Error ? e.message : e).slice(0, 160)}`, 503);
   }
 });
 
@@ -830,7 +881,7 @@ app.get("/flare/account/:address", async (c) => {
   try {
     return c.json(await vaultAccount(c.req.param("address")));
   } catch (e) {
-    return bad(c, String(e instanceof Error ? e.message : e), 500);
+    return bad(c, `vault read failed: ${String(e instanceof Error ? e.message : e).slice(0, 160)}`, 503);
   }
 });
 

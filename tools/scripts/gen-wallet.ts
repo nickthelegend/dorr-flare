@@ -1,74 +1,82 @@
 /**
- * Generate dorr deployer wallets:
- *  - Cardano preprod deployer (MeshWallet, networkId 0) — fund this with tADA
- *  - Midnight wallet mnemonic (BIP39) — for the local Midnight network / preprod
+ * Generate the two EVM keypairs dorr needs to run on Flare Coston2:
  *
- * Idempotent: refuses to overwrite an existing dorr/.env (use --force to regenerate).
- * Secrets land in dorr/.env (gitignored, chmod 600). NEVER commit.
+ *  - the **relayer**, which pays gas to submit batch settlements, and
+ *  - the **enclave** signer, whose key never leaves the confidential-compute
+ *    process and whose address is what TEEAttestationVerifier checks quotes against.
+ *
+ * Idempotent: refuses to overwrite an existing .env (pass --force to regenerate).
+ * Secrets land in the repo-root .env, which is gitignored and written 0600.
+ * Never commit it.
  */
-import { MeshWallet } from "@meshsdk/core";
-import { generateMnemonic } from "bip39";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+import { keccak256, toHex } from "viem";
 import { existsSync, writeFileSync, chmodSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { randomBytes } from "node:crypto";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const ENV_PATH = resolve(__dirname, "../../.env");
+
+const outFlag = process.argv.indexOf("--out");
+const ENV_PATH =
+  outFlag !== -1 && process.argv[outFlag + 1]
+    ? resolve(process.cwd(), process.argv[outFlag + 1]!)
+    : resolve(__dirname, "../../.env");
 
 const force = process.argv.includes("--force");
 if (existsSync(ENV_PATH) && !force) {
   console.error(`Refusing to overwrite ${ENV_PATH} — run with --force to regenerate.`);
+  console.error("Regenerating replaces the relayer and enclave keys; any C2FLR held by the old relayer stays there.");
   process.exit(1);
 }
 
-// --- Cardano preprod deployer ---
-const cardanoWords = MeshWallet.brew() as string[];
-const cardanoMnemonic = cardanoWords.join(" ");
-const wallet = new MeshWallet({
-  networkId: 0, // 0 = testnet (preprod)
-  key: { type: "mnemonic", words: cardanoWords },
-});
-// Newer Mesh versions require async init before address derivation.
-if (typeof (wallet as any).init === "function") {
-  await (wallet as any).init();
-}
-const deployerAddress = await wallet.getChangeAddress();
+const relayerKey = generatePrivateKey();
+const relayer = privateKeyToAccount(relayerKey);
 
-// --- Midnight wallet (BIP39, used by midnight-js wallet builder) ---
-const midnightMnemonic = generateMnemonic(256); // 24 words
+const enclaveKey = generatePrivateKey();
+const enclave = privateKeyToAccount(enclaveKey);
 
-const env = `# ─── dorr secrets — DO NOT COMMIT ────────────────────────────────
-# Cardano preprod deployer (operator custody + contract deploys)
-CARDANO_DEPLOYER_MNEMONIC="${cardanoMnemonic}"
-CARDANO_DEPLOYER_ADDRESS="${deployerAddress}"
-CARDANO_NETWORK="Preprod"
-CARDANO_BACKEND="blockfrost"
-# Get a free key at https://blockfrost.io (project for PREPROD) and paste it:
-BLOCKFROST_PROJECT_ID=""
+// The TEE identity is an opaque 32-byte label bound into every quote. A fresh
+// random value is correct for a dev enclave; a real deployment would derive it
+// from the attested measurement its hardware reports.
+const teeId = toHex(randomBytes(32));
+const teeMeasurement = keccak256(toHex(`dorr-enclave:${enclave.address}`));
 
-# Midnight (local network via docker: ghost-midnight-localnet-*)
-MIDNIGHT_MNEMONIC="${midnightMnemonic}"
-MIDNIGHT_DEPLOY_NETWORK="undeployed"
-MIDNIGHT_INDEXER_HTTP="http://127.0.0.1:8087/api/v1/graphql"
-MIDNIGHT_INDEXER_WS="ws://127.0.0.1:8087/api/v1/graphql/ws"
-MIDNIGHT_NODE_RPC="http://127.0.0.1:9944"
-MIDNIGHT_PROOF_SERVER="http://127.0.0.1:6300"
+const body = `# ── Flare Coston2 ────────────────────────────────────────────────────────────
+FLARE_RPC_URL="https://coston2-api.flare.network/ext/C/rpc"
+FLARE_CHAIN_ID="114"
+FLARE_EXPLORER="https://coston2-explorer.flare.network"
 
-# Operator service
-OPERATOR_PORT="8787"
+# FAssets FXRP on Coston2 (6dp) — the margin collateral
+FXRP_ADDRESS="0x0b6A3645c240605887a5532109323A3E12273dc7"
+
+# ── Deployed contracts (fill in after \`forge script script/Deploy.s.sol\`) ─────
+DORR_VAULT_ADDRESS=""
+DORR_SETTLEMENT_ADDRESS=""
+DORR_TEE_VERIFIER_ADDRESS=""
+
+# ── Relayer — pays gas for batch settlement. FUND THIS WITH C2FLR. ───────────
+FLARE_RELAYER_KEY="${relayerKey}"
+
+# ── Confidential compute enclave — the order-decryption key lives only here ───
+TEE_ENCLAVE_KEY="${enclaveKey}"
+TEE_ID="${teeId}"
+TEE_MEASUREMENT="${teeMeasurement}"
+
+# ── Operator ─────────────────────────────────────────────────────────────────
+OPERATOR_PORT="8791"
+# Require an EIP-191 wallet signature on every value-moving call.
+DORR_AUTH="1"
 `;
 
-writeFileSync(ENV_PATH, env, { mode: 0o600 });
+writeFileSync(ENV_PATH, body, { mode: 0o600 });
 chmodSync(ENV_PATH, 0o600);
 
-console.log("─".repeat(64));
-console.log("dorr deployer wallets generated → dorr/.env (chmod 600)");
-console.log("─".repeat(64));
-console.log("");
-console.log("CARDANO PREPROD DEPLOYER ADDRESS (fund this):");
-console.log("");
-console.log(`  ${deployerAddress}`);
-console.log("");
-console.log("Faucet: https://docs.cardano.org/cardano-testnets/tools/faucet");
-console.log("(select Preprod, paste the address, request tADA — do it 2-3x if allowed)");
-console.log("─".repeat(64));
+console.log(`Wrote ${ENV_PATH} (0600).\n`);
+console.log("RELAYER ADDRESS (fund this with C2FLR):");
+console.log(`  ${relayer.address}`);
+console.log("Faucet: https://faucet.flare.network/coston2");
+console.log("(it also hands out the FXRP you need for margin)\n");
+console.log("ENCLAVE SIGNER (TEEAttestationVerifier checks quotes against this):");
+console.log(`  ${enclave.address}`);

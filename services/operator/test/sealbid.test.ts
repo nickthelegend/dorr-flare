@@ -51,7 +51,7 @@ test("EPOCH CLEARS AT ONE UNIFORM PRICE — no arrival-order advantage", async (
   for (let i = 0; i < preimages.length; i++) {
     seals.push({
       id: `s${i}`,
-      address: `addr_test1seal${i}`,
+      address: `0x${String(i).repeat(40).slice(0, 40)}`,
       marketId: "FLR-USD",
       commitment: commitmentFor(preimages[i]),
       ciphertext: await sealOrder(preimages[i], pastRound),
@@ -75,7 +75,7 @@ test("COMMITMENT BINDING — a preimage that doesn't match its commitment is dro
   const seals: SealedInput[] = [
     {
       id: "bad",
-      address: "addr_test1bad",
+      address: "0x4444444444444444444444444444444444444444",
       marketId: "FLR-USD",
       commitment: fakeCommitment,
       ciphertext: await sealOrder(real, pastRound),

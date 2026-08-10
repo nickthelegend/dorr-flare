@@ -3,8 +3,8 @@ import type { MarketDef } from "../src/markets.js";
 import { seedPool, fill, markPrice, recenter, getPool } from "../src/vamm.js";
 
 const M: MarketDef = {
-  id: "TST-dUSD",
-  symbol: "TST/dUSD",
+  id: "TST-USD",
+  symbol: "TST/USD",
   base: "TST",
   pythFeedId: "00".repeat(32),
   vammDepthUsd: 1_000_000,

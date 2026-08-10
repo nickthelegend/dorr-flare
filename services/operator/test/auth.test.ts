@@ -1,7 +1,7 @@
 import { test, expect, beforeEach } from "bun:test";
 import { verifyAuth, authMessage, _resetAuthSeen, type AuthEnvelope, type SigVerifier } from "../src/auth.js";
 
-const SIGNER = "addr_test1qqowner";
+const SIGNER = "0x1111111111111111111111111111111111111111";
 const NOW = 1_000_000_000_000;
 
 // Stub verifier: "valid" iff the message equals what SIGNER supposedly signed.
@@ -40,8 +40,8 @@ test("stale signature outside replay window is rejected", () => {
 });
 
 test("signer mismatch (acting on someone else's address) is rejected", () => {
-  const p = { address: "addr_test1qqVICTIM" };
-  const r = verifyAuth("commit", p, envelope("commit", p), "addr_test1qqVICTIM", NOW, accept);
+  const p = { address: "0x2222222222222222222222222222222222222222" };
+  const r = verifyAuth("commit", p, envelope("commit", p), "0x2222222222222222222222222222222222222222", NOW, accept);
   expect(r.ok).toBe(false);
   if (!r.ok) expect(r.error).toContain("signer does not match");
 });

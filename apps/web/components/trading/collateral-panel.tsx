@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { PanelHeader } from "./panel-header";
 import { Button } from "@/components/ui/button";
@@ -59,12 +59,10 @@ export default function CollateralPanel() {
 
   const [depositAmt, setDepositAmt] = useState("100");
   const [withdrawAmt, setWithdrawAmt] = useState("");
-  const [fauceting, setFauceting] = useState(false);
   const [depositing, setDepositing] = useState(false);
   const [depositStage, setDepositStage] = useState<string | null>(null);
   const [withdrawing, setWithdrawing] = useState(false);
   const [lastTx, setLastTx] = useState<string | null>(null);
-  const cancelled = useRef(false);
 
   const handleFaucet = () => {
     // FXRP on Coston2 comes from Flare's own faucet (100 C2FLR + 10 FXRP + 10 USDT0).
@@ -84,7 +82,6 @@ export default function CollateralPanel() {
     }
     if (!(await ensureCoston2("deposit"))) return;
     setDepositing(true);
-    cancelled.current = false;
     try {
       setDepositStage("reading vault");
       const info = await operator.flareInfo();
@@ -218,13 +215,9 @@ export default function CollateralPanel() {
               size="sm"
               className="w-full text-xs"
               onClick={handleFaucet}
-              disabled={fauceting || !address}
+              disabled={!address}
             >
-              {fauceting ? (
-                <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-              ) : (
-                <Droplets className="w-3.5 h-3.5 mr-1.5" />
-              )}
+              <Droplets className="w-3.5 h-3.5 mr-1.5" />
               Get FXRP
             </Button>
 

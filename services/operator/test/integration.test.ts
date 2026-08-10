@@ -7,13 +7,14 @@
 // auth stays off here (DORR_AUTH unset) — auth is pinned in auth.test.ts.
 
 import { test, expect, beforeAll } from "bun:test";
+import { signedPost, testTrader } from "./helpers/signed-request.js";
 
-const USER = "addr_test1qqintegrationuser";
+const USER_ACCOUNT = testTrader(0);
+const USER = USER_ACCOUNT.address;
 let app: { request: (path: string, init?: RequestInit) => Promise<Response> };
 
 const j = async (r: Response) => (await r.json()) as any;
-const post = (path: string, body?: unknown) =>
-  app.request(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body ?? {}) });
+const post = signedPost(() => app, USER_ACCOUNT);
 const get = (path: string) => app.request(path);
 
 async function pollJob(id: string, tries = 40): Promise<any> {
@@ -43,7 +44,7 @@ beforeAll(async () => {
 
 test("private trade lifecycle: commit → execute → close, fully wired", async () => {
   await post("/demo/reset");
-  const seeded = await j(await post("/demo/seed", { address: USER, dusd: 50_000 }));
+  const seeded = await j(await post("/demo/seed", { address: USER, fxrp: 50_000 }));
   expect(seeded.balance).toBe(50_000);
 
   // COMMIT (private)
@@ -103,7 +104,7 @@ test("private trade lifecycle: commit → execute → close, fully wired", async
 
 test("public order leaks (the A/B foil), proving the toggle matters", async () => {
   await post("/demo/reset");
-  await post("/demo/seed", { address: USER, dusd: 50_000 });
+  await post("/demo/seed", { address: USER, fxrp: 50_000 });
   await post("/orders/commit", {
     address: USER, marketId: "SOL-USD", side: "SHORT", marginUsd: 500, leverage: 3, privacyMode: "public",
   });
@@ -115,7 +116,7 @@ test("public order leaks (the A/B foil), proving the toggle matters", async () =
 
 test("rejects insufficient margin", async () => {
   await post("/demo/reset");
-  await post("/demo/seed", { address: USER, dusd: 100 });
+  await post("/demo/seed", { address: USER, fxrp: 100 });
   const r = await post("/orders/commit", {
     address: USER, marketId: "FLR-USD", side: "LONG", marginUsd: 1_000, leverage: 5, privacyMode: "private",
   });

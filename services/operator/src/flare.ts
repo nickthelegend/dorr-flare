@@ -157,7 +157,19 @@ function withRelayer<T>(fn: () => Promise<T>): Promise<T> {
   return run;
 }
 
+/**
+ * Whether this process settles on Flare.
+ *
+ * Forced off under `NODE_ENV=test`. The suite exercises the ledger, the vAMM and
+ * the sealed-batch logic against `state.test.json`; it must not read or write a
+ * live vault. Left on, `reconcileVault` would re-derive every test trader's
+ * balance from a Coston2 account that holds nothing and wipe the margin the test
+ * just set up — which is exactly what happened once the fixtures moved to real
+ * EVM addresses. On-chain behaviour is covered by the Solidity suite
+ * (`forge test`) and by signed runs against the live operator.
+ */
 export function flareConfigured(): boolean {
+  if (process.env.NODE_ENV === "test" && process.env.DORR_TEST_FLARE !== "1") return false;
   return Boolean(env.flare.vault && env.flare.settlement);
 }
 
@@ -167,6 +179,28 @@ export const fxrpAddress = (): Address => getAddress(env.flare.fxrp);
 
 export const explorerTx = (h: string) => `${env.flare.explorer}/tx/${h}`;
 export const explorerAddress = (a: string) => `${env.flare.explorer}/address/${a}`;
+
+/**
+ * Retry a read against the chain.
+ *
+ * The public Coston2 RPC answers 429 under load, and the endpoints the terminal
+ * polls fan several `eth_call`s out through `Promise.all` — one refusal rejected
+ * the whole request, so a momentary blip surfaced as a 500 in the browser
+ * console on a page that is otherwise error-free. Reads are idempotent, so a
+ * couple of backed-off attempts cost nothing and hide the blip entirely.
+ */
+async function readWithRetry<T>(fn: () => Promise<T>, tries = 3): Promise<T> {
+  let last: unknown;
+  for (let i = 0; i < tries; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      last = e;
+      if (i < tries - 1) await new Promise((r) => setTimeout(r, 300 * 2 ** i));
+    }
+  }
+  throw last;
+}
 
 // ---------------------------------------------------------------------------
 // Reads
@@ -180,12 +214,12 @@ export interface VaultAccount {
 
 /** A trader's on-chain FXRP margin account. */
 export async function vaultAccount(trader: string): Promise<VaultAccount> {
-  const [balance, locked, free] = (await publicClient().readContract({
+  const [balance, locked, free] = (await readWithRetry(() => publicClient().readContract({
     address: vaultAddress(),
     abi: VAULT_ABI,
     functionName: "accountOf",
     args: [getAddress(trader)],
-  })) as [bigint, bigint, bigint];
+  }))) as [bigint, bigint, bigint];
   return { balance: unitsToUsd(balance), locked: unitsToUsd(locked), free: unitsToUsd(free) };
 }
 
@@ -200,9 +234,9 @@ export async function vaultSolvency(): Promise<{
 }> {
   const pc = publicClient();
   const [reserves, totalInternal, solvent] = await Promise.all([
-    pc.readContract({ address: vaultAddress(), abi: VAULT_ABI, functionName: "reserves" }) as Promise<bigint>,
-    pc.readContract({ address: vaultAddress(), abi: VAULT_ABI, functionName: "totalInternal" }) as Promise<bigint>,
-    pc.readContract({ address: vaultAddress(), abi: VAULT_ABI, functionName: "isSolvent" }) as Promise<boolean>,
+    readWithRetry(() => pc.readContract({ address: vaultAddress(), abi: VAULT_ABI, functionName: "reserves" }) as Promise<bigint>),
+    readWithRetry(() => pc.readContract({ address: vaultAddress(), abi: VAULT_ABI, functionName: "totalInternal" }) as Promise<bigint>),
+    readWithRetry(() => pc.readContract({ address: vaultAddress(), abi: VAULT_ABI, functionName: "isSolvent" }) as Promise<boolean>),
   ]);
   const r = unitsToUsd(reserves);
   const l = unitsToUsd(totalInternal);
@@ -220,30 +254,30 @@ export async function fxrpInfo(): Promise<{ address: string; symbol: string; dec
   const pc = publicClient();
   const a = fxrpAddress();
   const [symbol, decimals, totalSupply] = await Promise.all([
-    pc.readContract({ address: a, abi: ERC20_ABI, functionName: "symbol" }) as Promise<string>,
-    pc.readContract({ address: a, abi: ERC20_ABI, functionName: "decimals" }) as Promise<number>,
-    pc.readContract({ address: a, abi: ERC20_ABI, functionName: "totalSupply" }) as Promise<bigint>,
+    readWithRetry(() => pc.readContract({ address: a, abi: ERC20_ABI, functionName: "symbol" }) as Promise<string>),
+    readWithRetry(() => pc.readContract({ address: a, abi: ERC20_ABI, functionName: "decimals" }) as Promise<number>),
+    readWithRetry(() => pc.readContract({ address: a, abi: ERC20_ABI, functionName: "totalSupply" }) as Promise<bigint>),
   ]);
   return { address: a, symbol, decimals, totalSupply: Number(totalSupply) / 10 ** decimals };
 }
 
 export async function fxrpBalanceOf(who: string): Promise<number> {
-  const bal = (await publicClient().readContract({
+  const bal = (await readWithRetry(() => publicClient().readContract({
     address: fxrpAddress(),
     abi: ERC20_ABI,
     functionName: "balanceOf",
     args: [getAddress(who)],
-  })) as bigint;
+  }))) as bigint;
   return unitsToUsd(bal);
 }
 
 export async function getBatchOnChain(epochId: Hex) {
-  const b = (await publicClient().readContract({
+  const b = (await readWithRetry(() => publicClient().readContract({
     address: settlementAddress(),
     abi: SETTLEMENT_ABI,
     functionName: "getBatch",
     args: [epochId],
-  })) as {
+  }))) as {
     membershipRoot: Hex;
     clearingPrice: bigint;
     ftsoPrice: bigint;
@@ -264,11 +298,11 @@ export async function getBatchOnChain(epochId: Hex) {
 }
 
 export async function epochCount(): Promise<number> {
-  const n = (await publicClient().readContract({
+  const n = (await readWithRetry(() => publicClient().readContract({
     address: settlementAddress(),
     abi: SETTLEMENT_ABI,
     functionName: "epochCount",
-  })) as bigint;
+  }))) as bigint;
   return Number(n);
 }
 
@@ -330,7 +364,7 @@ export async function settleBatchOnChain(p: SettleBatchParams): Promise<{ txHash
 /** Relayer's native balance (gas headroom). */
 export async function relayerBalance(): Promise<{ address: string; c2flr: number }> {
   const a = relayer().address;
-  const bal = await publicClient().getBalance({ address: a });
+  const bal = await readWithRetry(() => publicClient().getBalance({ address: a }));
   return { address: a, c2flr: Number(bal) / 1e18 };
 }
 

@@ -77,12 +77,14 @@ function publicClient(): PublicClient {
 /** Resolve the FTSO v2 address from Flare's ContractRegistry (never hardcoded). */
 export async function resolveFtsoAddress(): Promise<Address> {
   if (ftsoAddress) return ftsoAddress;
-  const addr = (await publicClient().readContract({
+  // Retried: the registry lookup is the first thing every price read depends on,
+  // and the public RPC 429s often enough that a single attempt is not a verdict.
+  const addr = (await withRetry(() => publicClient().readContract({
     address: CONTRACT_REGISTRY,
     abi: REGISTRY_ABI,
     functionName: "getContractAddressByName",
     args: ["FtsoV2"],
-  })) as Address;
+  }))) as Address;
   if (!addr || addr === "0x0000000000000000000000000000000000000000") {
     throw new Error("ContractRegistry returned no FtsoV2 address");
   }
@@ -110,13 +112,29 @@ export async function readFeed(feedId: string): Promise<FtsoPrice> {
   };
 }
 
+/** How many poll ticks between re-probes of a disabled feed. */
+const PROBE_EVERY = 10;
+let pollTick = 0;
+
 export async function pollOnce(): Promise<void> {
-  const feeds = MARKETS.filter((m) => !disabledFeeds.has(norm(m.feedId)));
+  pollTick++;
+  // Disabled feeds are re-probed periodically. Without this the disabled set is
+  // append-only: a single bad minute on the public RPC takes a market off the
+  // venue until somebody restarts the process, which is not a failure mode a
+  // trading venue gets to have.
+  const probing = pollTick % PROBE_EVERY === 0;
+  const feeds = MARKETS.filter((m) => probing || !disabledFeeds.has(norm(m.feedId)));
+
   await Promise.all(
     feeds.map(async (m) => {
+      const key = norm(m.feedId);
       try {
         const p = await readFeed(m.feedId);
-        latest.set(norm(m.feedId), p);
+        if (!(p.price > 0)) throw new Error("zero price");
+        if (disabledFeeds.delete(key)) {
+          console.log(`[ftso] ${m.symbol} recovered — market re-enabled @ $${p.price.toFixed(6)}`);
+        }
+        latest.set(key, p);
         // Fold the sample into the market's own OHLC history, so the chart is
         // drawn from the same oracle that prices fills — not a third-party API.
         recordPriceSample(m.id, p.price, p.fetchedAt);
@@ -127,27 +145,37 @@ export async function pollOnce(): Promise<void> {
   );
 }
 
-/** Validate every configured feed against the on-chain oracle at boot. */
+/**
+ * Validate every configured feed against the on-chain oracle at boot.
+ *
+ * Both the registry lookup and each feed read are retried: the public Coston2
+ * RPC answers 429 often enough that a single attempt is not evidence a feed is
+ * broken. A registry failure no longer disables anything — the address resolves
+ * lazily on the next read, and leaving markets enabled lets the poller heal
+ * them. Anything still failing after retries is disabled, and `pollOnce` will
+ * re-probe and re-enable it when the oracle comes back.
+ */
 export async function validateFeeds(): Promise<void> {
-  const ftso = await resolveFtsoAddress().catch((e) => {
-    console.error(`[ftso] registry lookup failed: ${String(e).slice(0, 160)}`);
+  const ftso = await withRetry(() => resolveFtsoAddress()).catch((e) => {
+    console.error(
+      `[ftso] registry lookup failed after retries: ${String(e).slice(0, 160)} — will resolve on the next poll`,
+    );
     return null;
   });
-  if (!ftso) {
-    for (const m of MARKETS) disabledFeeds.add(norm(m.feedId));
-    return;
-  }
+  if (!ftso) return;
   console.log(`[ftso] FtsoV2 @ ${ftso} (via ContractRegistry, chain ${env.flare.chainId})`);
 
   for (const m of MARKETS) {
     try {
-      const p = await readFeed(m.feedId);
+      const p = await withRetry(() => readFeed(m.feedId));
       if (!(p.price > 0)) throw new Error("zero price");
       latest.set(norm(m.feedId), p);
       console.log(`[ftso] ${m.symbol} feed ok — $${p.price.toFixed(6)}`);
     } catch (e) {
       disabledFeeds.add(norm(m.feedId));
-      console.error(`[ftso] FEED FAILED for ${m.symbol} (${m.feedId}): ${String(e).slice(0, 140)} — market disabled`);
+      console.error(
+        `[ftso] FEED FAILED for ${m.symbol} (${m.feedId}): ${String(e).slice(0, 140)} — market disabled, will re-probe`,
+      );
     }
   }
 }

@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { PanelHeader } from "./panel-header";
 import { Badge } from "@/components/ui/badge";
 import { motion, AnimatePresence } from "framer-motion";
-import { Clock, EyeOff, TrendingUp, TrendingDown, X, Loader2, Anchor, ExternalLink } from "lucide-react";
+import { Clock, EyeOff, TrendingUp, TrendingDown, X, Loader2 } from "lucide-react";
 import { cn, formatTimestamp, formatUsd, humanizeError, truncateHash } from "@/lib/core";
 import { useDorrWallet } from "@/hooks/use-dorr-wallet";
 import { useRestingOrders, useInvalidateTrading } from "@/hooks/use-operator";
@@ -17,7 +17,6 @@ function RestingRow({ order, address }: { order: RestingOrder; address?: string 
   const isLong = order.side === "LONG";
   const invalidate = useInvalidateTrading();
   const [cancelling, setCancelling] = useState(false);
-  const [anchoring, setAnchoring] = useState(false);
 
   async function cancel() {
     setCancelling(true);
@@ -32,22 +31,6 @@ function RestingRow({ order, address }: { order: RestingOrder; address?: string 
       setCancelling(false);
     }
     // on success the row unmounts (list refetch) — no need to reset state
-  }
-
-  async function anchorL1() {
-    setAnchoring(true);
-    try {
-      const res = await operator.anchorCommit(order.id);
-      toast.success("Commitment anchored on Flare", {
-        description: "Existence is now publicly provable — contents still hidden.",
-        action: { label: "View tx", onClick: () => window.open(res.explorerUrl, "_blank") },
-      });
-      invalidate(address);
-    } catch (e: any) {
-      toast.error("Anchor failed", { description: humanizeError(e) });
-    } finally {
-      setAnchoring(false);
-    }
   }
 
   return (
@@ -105,31 +88,6 @@ function RestingRow({ order, address }: { order: RestingOrder; address?: string 
           <span className="text-[9px] font-mono text-muted-foreground/70" title={order.commitmentHash}>
             {truncateHash(order.commitmentHash, 8, 6)}
           </span>
-          {order.commitAnchor ? (
-            <a
-              href={`https://coston2-explorer.flare.network/tx/${order.commitAnchor.txHash}`}
-              target="_blank"
-              rel="noreferrer"
-              title="Commitment anchored on Flare — existence provable, contents hidden"
-              className="flex items-center gap-1 rounded border border-success/40 bg-success/10 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-success hover:bg-success/20 transition-colors"
-            >
-              <Anchor className="w-2.5 h-2.5" /> L1 <ExternalLink className="w-2 h-2" />
-            </a>
-          ) : (
-            <button
-              onClick={anchorL1}
-              disabled={anchoring}
-              title="Anchor this commitment on Flare — a public, timestamped proof it existed (contents stay hidden)"
-              className={cn(
-                "flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-[9px] uppercase tracking-wide",
-                "text-muted-foreground hover:text-primary hover:border-primary/50 transition-colors",
-                "disabled:opacity-50 disabled:cursor-not-allowed",
-              )}
-            >
-              {anchoring ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Anchor className="w-2.5 h-2.5" />}
-              anchor L1
-            </button>
-          )}
           <button
             onClick={cancel}
             disabled={cancelling}

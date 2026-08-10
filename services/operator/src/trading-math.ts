@@ -16,7 +16,7 @@ export const FUNDING_CAP = 0.0075;
  */
 export const MAX_ORACLE_DIVERGENCE_BPS = 200;
 
-/** Position notional = margin × leverage (quote units, dUSD). */
+/** Position notional = margin × leverage (quote units, FXRP). */
 export function notional(marginUsd: number, leverage: number): number {
   return marginUsd * leverage;
 }

@@ -6,11 +6,14 @@
  */
 
 import { test, expect, beforeAll } from "bun:test";
+import { signedPost, testTrader } from "./helpers/signed-request.js";
 import { randomBytes } from "node:crypto";
 import { sealOrder, commitmentFor, roundForTime, type OrderPreimage } from "../src/sealbid.js";
 
-const A = "addr_test1sealedA";
-const B = "addr_test1sealedB";
+const A_ACCOUNT = testTrader(0);
+const A = A_ACCOUNT.address;
+const B_ACCOUNT = testTrader(1);
+const B = B_ACCOUNT.address;
 let app: { request: (path: string, init?: RequestInit) => Promise<Response> };
 let pyth: typeof import("../src/ftso.js");
 let vamm: typeof import("../src/vamm.js");
@@ -19,8 +22,7 @@ let markets: typeof import("../src/markets.js");
 const FLR = "FLR-USD";
 
 const j = async (r: Response) => (await r.json()) as any;
-const post = (p: string, b?: unknown) =>
-  app.request(p, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b ?? {}) });
+const post = signedPost(() => app, A_ACCOUNT);
 const get = (p: string) => app.request(p);
 
 beforeAll(async () => {
@@ -41,13 +43,16 @@ function mk(side: "LONG" | "SHORT", sizeBase: number, marginUsd: number): OrderP
 /** A client seals an order and submits only ciphertext + commitment + a margin bound. */
 async function sealAndSubmit(address: string, p: OrderPreimage, round: number, maxMarginUsd: number) {
   const ciphertext = await sealOrder(p, round);
-  return j(await post("/orders/seal", { address, marketId: FLR, commitment: commitmentFor(p), ciphertext, targetRound: round, maxMarginUsd }));
+  // Sign as whoever owns the order — the operator rejects an envelope whose
+  // signer is not the acting address.
+  const as = address === B ? B_ACCOUNT : A_ACCOUNT;
+  return j(await post("/orders/seal", { address, marketId: FLR, commitment: commitmentFor(p), ciphertext, targetRound: round, maxMarginUsd }, as));
 }
 
 test("SEALED E2E — sealed orders clear at ONE price into real positions; margin settles", async () => {
   await post("/demo/reset");
-  await post("/demo/seed", { address: A, dusd: 100_000 });
-  await post("/demo/seed", { address: B, dusd: 100_000 });
+  await post("/demo/seed", { address: A, fxrp: 100_000 });
+  await post("/demo/seed", { address: B, fxrp: 100_000 });
   pyth._setPriceForTest(markets.marketById(FLR)!.feedId, 0.15);
   vamm.seedPool(markets.marketById(FLR)!, 0.15);
 
@@ -96,7 +101,7 @@ test("SEALED E2E — sealed orders clear at ONE price into real positions; margi
 
 test("SEALED E2E — a preimage that doesn't match its commitment is dropped, margin released", async () => {
   await post("/demo/reset");
-  await post("/demo/seed", { address: A, dusd: 50_000 });
+  await post("/demo/seed", { address: A, fxrp: 50_000 });
   pyth._setPriceForTest(markets.marketById(FLR)!.feedId, 0.15);
   vamm.seedPool(markets.marketById(FLR)!, 0.15);
 
@@ -120,7 +125,7 @@ test("SEALED E2E — a preimage that doesn't match its commitment is dropped, ma
 
 test("SEALED E2E — an order sealed to a FUTURE round stays sealed (operator can't settle it early)", async () => {
   await post("/demo/reset");
-  await post("/demo/seed", { address: A, dusd: 50_000 });
+  await post("/demo/seed", { address: A, fxrp: 50_000 });
   pyth._setPriceForTest(markets.marketById(FLR)!.feedId, 0.15);
   vamm.seedPool(markets.marketById(FLR)!, 0.15);
 
@@ -136,7 +141,7 @@ test("SEALED E2E — an order sealed to a FUTURE round stays sealed (operator ca
 
 test("SEALED E2E — a cleared sealed order is selectively disclosable and verifies", async () => {
   await post("/demo/reset");
-  await post("/demo/seed", { address: A, dusd: 50_000 });
+  await post("/demo/seed", { address: A, fxrp: 50_000 });
   pyth._setPriceForTest(markets.marketById(FLR)!.feedId, 0.15);
   vamm.seedPool(markets.marketById(FLR)!, 0.15);
 

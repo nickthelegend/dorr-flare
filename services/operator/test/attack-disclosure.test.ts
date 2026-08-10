@@ -5,12 +5,13 @@
  */
 
 import { test, expect, beforeAll } from "bun:test";
+import { signedPost, testTrader } from "./helpers/signed-request.js";
 
-const USER = "addr_test1qqattackuser";
+const USER_ACCOUNT = testTrader(0);
+const USER = USER_ACCOUNT.address;
 let app: { request: (p: string, init?: RequestInit) => Promise<Response> };
 const j = async (r: Response) => (await r.json()) as any;
-const post = (p: string, b?: unknown) =>
-  app.request(p, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b ?? {}) });
+const post = signedPost(() => app, USER_ACCOUNT);
 const get = (p: string) => app.request(p);
 async function pollJob(id: string) {
   for (let i = 0; i < 60; i++) {
@@ -50,7 +51,7 @@ test("MEV attack lab: sandwich SUCCEEDS on a public DEX but FAILS on dorr", asyn
 
 test("selective disclosure: open a hidden position to an auditor, verifiable vs the commitment", async () => {
   await post("/demo/reset");
-  await post("/demo/seed", { address: USER, dusd: 50_000 });
+  await post("/demo/seed", { address: USER, fxrp: 50_000 });
   const commit = await j(await post("/orders/commit", {
     address: USER, marketId: "FLR-USD", side: "LONG", marginUsd: 1000, leverage: 5, privacyMode: "private",
   }));
@@ -79,7 +80,7 @@ test("selective disclosure: open a hidden position to an auditor, verifiable vs 
 
 test("activity log records the trader's actions", async () => {
   await post("/demo/reset");
-  await post("/demo/seed", { address: USER, dusd: 50_000 });
+  await post("/demo/seed", { address: USER, fxrp: 50_000 });
   const commit = await j(await post("/orders/commit", {
     address: USER, marketId: "ETH-USD", side: "SHORT", marginUsd: 800, leverage: 3, privacyMode: "private",
   }));

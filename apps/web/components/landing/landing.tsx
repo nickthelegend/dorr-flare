@@ -110,14 +110,20 @@ export function Landing() {
     <div ref={rootRef} className="landing-root relative min-h-screen bg-[#0c0c0c] text-white">
       {/* ── ambient backdrop ── */}
       <div className="fixed inset-0 z-0 pointer-events-none">
+        {/* Self-hosted on purpose: this used to stream a 15.8 MB file from an AI
+            generation service's user-content CDN. Those URLs expire, and a
+            submission that has to still work months from now cannot have its
+            hero depend on one. Re-encoded to 587 KB — the backdrop sits under a
+            50% opacity scrim and a gradient, so nothing is lost. */}
         <video
           autoPlay
           loop
           muted
           playsInline
+          preload="auto"
           aria-hidden
           className="w-full h-full object-cover pointer-events-none opacity-50"
-          src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260508_064122_c4750c0e-7476-4b44-94a2-a85a65c63bf2.mp4"
+          src="/assets/hero-loop.mp4"
         />
         <div className="absolute inset-0 bg-gradient-to-b from-[#0c0c0c]/70 via-[#0c0c0c]/85 to-[#0c0c0c]" />
       </div>

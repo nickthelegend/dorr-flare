@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "bun run --watch src/index.ts",
-    "start": "bun run src/index.ts"
+    "start": "bun run src/index.ts",
+    "enclave": "bun run src/enclave/server.ts"
   },
   "dependencies": {
     "@dorr/engine": "workspace:*",

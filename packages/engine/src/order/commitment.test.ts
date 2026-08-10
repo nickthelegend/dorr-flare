@@ -6,7 +6,7 @@ import {
 } from "./commitment.js";
 
 const baseOrder = (): OrderCommitmentInput => ({
-  pairId: "ADA-USD",
+  pairId: "FLR-USD",
   side: "LONG",
   price: "0.52",
   size: "100",
