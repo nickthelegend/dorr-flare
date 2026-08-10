@@ -86,13 +86,15 @@ Also: design rationale in [DESIGN.md](./DESIGN.md) · stage script in [DEMO.md](
 
 ## Testing
 
-**85 operator tests + 22 Solidity tests**, all green. Coverage includes the sealed-bid timelock path against **live drand**, uniform-price batch clearing, selective disclosure (including re-opening a sealed order's ciphertext), EIP-191 auth against real keys, the FTSO drift guard, TEE attestation binding, and a `DorrVault` fuzz run asserting a withdrawal can never exceed free balance. See [docs/TESTING.md](./docs/TESTING.md).
+**85 operator tests + 31 Solidity tests**, all green. Coverage includes the sealed-bid timelock path against **live drand**, uniform-price batch clearing, selective disclosure (including re-opening a sealed order's ciphertext), EIP-191 auth against real keys, the FTSO drift guard, TEE attestation binding, and two `DorrVault` fuzz runs asserting a withdrawal can never exceed free balance, with or without locked margin. See [docs/TESTING.md](./docs/TESTING.md).
 
 ## Honest scope (v1)
 
 dorr's guarantee today: **neither the public nor the operator can see or front-run a sealed order**, the epoch clears at one price, collateral is **self-custodied**, and the settlement contract **rejects an off-market price**.
 
-What is still trusted: the operator for **liveness/censorship** (the on-chain membership root makes censorship detectable, not impossible); the **uniform-price computation** is auditable but not ZK-proven; **liquidation runs off-chain**; and — the one gap worth naming loudly — **margin backing an open position is not locked on-chain**, so a trader can withdraw collateral that backs their own position. That fix needs a contract change and is the top v2 item. Full detail, including the threat-model table, in [SECURITY.md](./docs/SECURITY.md).
+Margin behind an open position is **locked in the vault**, so a trader cannot withdraw collateral backing their own position — verified live: with 3.6 FXRP deposited and 1.5 locked, `withdraw(3.0)` reverts and `withdraw(2.0)` succeeds.
+
+What is still trusted: the operator for **liveness/censorship** (the on-chain membership root makes censorship detectable, not impossible); the **uniform-price computation** is auditable but not ZK-proven; and **liquidation runs off-chain**. Full detail, including the threat-model table, in [SECURITY.md](./docs/SECURITY.md).
 
 ## Tech
 

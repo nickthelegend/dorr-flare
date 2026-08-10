@@ -4,7 +4,8 @@ import { app } from "./routes.js";
 import { MARKETS } from "./markets.js";
 import { validateFeeds, startPricePolling, getPrice } from "./ftso.js";
 import { seedPool, recenter } from "./vamm.js";
-import { loadState } from "./state.js";
+import { loadState, getState } from "./state.js";
+import { flareConfigured, syncLockedMargin } from "./flare.js";
 import { applyFundingTick, scanLiquidations, scanLimitOrders, scanStops, settleSealedBatch } from "./trading.js";
 
 async function main() {
@@ -59,6 +60,29 @@ async function main() {
       settling = false;
     }
   }, 6_000);
+
+  // Margin-lock sweep: make the vault's on-chain `locked` agree with the ledger
+  // for every account. Locks are awaited on the trading path, so this is a
+  // self-healer for a dropped release (or a lock issued while the RPC was down)
+  // rather than the primary mechanism.
+  if (flareConfigured()) {
+    let sweeping = false;
+    setInterval(async () => {
+      if (sweeping) return;
+      sweeping = true;
+      try {
+        for (const [address, acct] of Object.entries(getState().accounts)) {
+          if (!/^0x[0-9a-fA-F]{40}$/.test(address)) continue;
+          const moved = await syncLockedMargin(address, acct.locked).catch(() => 0);
+          if (moved !== 0) {
+            console.log(`[margin] resynced ${address.slice(0, 10)}… by ${moved.toFixed(6)} FXRP`);
+          }
+        }
+      } finally {
+        sweeping = false;
+      }
+    }, 60_000);
+  }
 
   serve({ fetch: app.fetch, port: env.port });
   console.log(`dorr operator listening on :${env.port}`);

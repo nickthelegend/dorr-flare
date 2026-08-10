@@ -62,13 +62,31 @@ The settlement contract can only `lockMargin` / `releaseMargin` / `applyPnl` —
 
 So collateral is **self-custodied**: even if the operator vanishes or turns malicious, your deposit is reclaimable with your key.
 
-### ⚠️ Known gap: open-position margin is not locked on-chain
+### Margin behind an open position is locked on-chain
 
-The vault supports `lockMargin`, but **the operator does not call it** — margin backing an open position is tracked only in the operator's off-chain ledger. On-chain, `locked` stays `0`.
+Collateral backing a position isn't just recorded in the operator's ledger — it is
+reserved in the vault itself. `DorrBatchSettlement` exposes a keeper-gated
+`lockMargin`/`releaseMargin` passthrough (the vault only accepts margin calls from
+its settlement contract), and the operator locks **before** it acknowledges an
+order. So `withdraw()` refuses anything above `balance - locked`:
 
-**Consequence:** a trader can withdraw collateral that is currently backing their own open position. The operator will then refuse further trades (its `free` is derived from the on-chain balance), but the existing position is under-backed, and since PnL is zero-sum a counterparty's profit could be unbacked.
+```
+balance 3.6 FXRP, locked 1.5 (two open positions)
+  withdraw(3.0) → reverts InsufficientFree   ← the position stays backed
+  withdraw(2.0) → succeeds                    ← free collateral is still yours
+```
 
-**Why it isn't fixed here:** `lockMargin` is `onlySettlement`, and `DorrBatchSettlement` exposes no passthrough — closing this needs a contract change plus a redeploy, not an operator change. It is the top item for v2, alongside on-chain liquidation.
+*Verified against the live vault on Coston2, exactly as shown above.*
+
+Locking can never move value: it only shifts a trader's own balance between
+"free" and "locked", reserves are untouched, and `withdraw()` still pays only the
+depositor. Proven by `contracts/test/MarginCustody.t.sol` (9 tests + a fuzz run
+asserting a withdrawal never exceeds `balance − locked` for any lock amount).
+
+The lock is awaited on the increasing direction (commit, seal, add-margin) so the
+chain reserves collateral before an order is confirmed; releases are fired
+optimistically and a 60-second sweep re-converges any account whose on-chain
+`locked` drifts from the ledger.
 
 ## 3. Auth — only you can place your trade
 
@@ -107,7 +125,7 @@ Enable enforcement with `DORR_AUTH=1` (the web signs automatically when a wallet
 | Signature replay | **mitigated** | freshness window + dedupe |
 | Commitment preimage recovery | **mitigated** | 128-bit nonce, SHA-256 |
 | Operator seizing user collateral | **mitigated** (non-custodial vault) | `DorrVault.withdraw()` pays `msg.sender` only; settlement is zero-sum and cannot drain reserves |
-| **Withdrawing margin that backs an open position** | **NOT mitigated** (v1) | on-chain `locked` is never set — see the known gap in §2c |
+| Withdrawing margin that backs an open position | **mitigated** (enforced on-chain) | the keeper locks margin in the vault before an order is confirmed; `withdraw()` reverts above `balance − locked` |
 | Clearing/PnL correctness on-chain | **partly enforced** | price band + attestation + zero-sum PnL are enforced by the contract; the uniform-price computation itself is auditable, not ZK-proven |
 | Operator liveness / censorship | **trusted** (v1) | anchored membership gives evidence, not prevention |
 
@@ -116,16 +134,14 @@ Enable enforcement with `DORR_AUTH=1` (the web signs automatically when a wallet
 dorr's guarantee **today** is: *neither the public **nor the operator** can see or front-run a sealed order, the whole epoch clears at one uniform price, a self-custodial vault means the operator **can't seize your collateral**, and the batch's membership and price are recorded on Flare by a contract that independently re-reads FTSO before it will accept them.* What remains **trusted** (so it's **not yet fully trustless**):
 
 - the operator is trusted for **liveness/censorship** — the on-chain membership root makes censorship *detectable*, not impossible;
-- **margin backing an open position is not locked on-chain** (§2c) — the operator's ledger tracks it, the vault does not enforce it;
 - the **uniform-price computation is auditable but not ZK-proven** — the operator computes it off-chain; the chain checks the *result* is within FTSO band and carries a valid enclave quote, not that the auction rule was applied correctly;
 - **liquidation is off-chain** — the keeper closes positions; nothing on-chain forces it.
 
 **Pitch it as "private order flow the operator itself can't front-run (drand-sealed), uniform-price clearing, and a settlement contract that rejects an off-market price — trusted-operator v1 for clearing-correctness and liveness." That's exactly true. Don't claim "fully trustless."**
 
 ### The path to fully trustless (v2)
-1. **Lock margin on-chain** — a settlement-authorised `lockMargin` call at position open, so collateral backing an open position can't be withdrawn. This is the gap in §2c and the first thing to fix.
-2. **On-chain liquidation** — enforce margin and liquidation against the FTSO price the settlement contract already reads, so the vault releases funds without trusting a keeper.
-3. **ZK-proven clearing** — prove the disclosed clearing price and net flow are the correct output of the uniform-price rule over the committed order set, removing clearing-correctness trust. ✅ **Operator-blindness is already done** via the drand sealed-bid — the operator never sees a sealed order's plaintext.
+1. **On-chain liquidation** — enforce margin and liquidation against the FTSO price the settlement contract already reads, so the vault releases funds without trusting a keeper.
+2. **ZK-proven clearing** — prove the disclosed clearing price and net flow are the correct output of the uniform-price rule over the committed order set, removing clearing-correctness trust. ✅ **Operator-blindness is already done** via the drand sealed-bid — the operator never sees a sealed order's plaintext.
 
 ## Not-secrets, by design
 - The **market** you trade and the **timing** of your commit are public. Only side/size/price/leverage/identity are hidden.

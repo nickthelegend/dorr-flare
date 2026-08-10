@@ -54,14 +54,14 @@ A constant-product virtual AMM (`base × quote = k`) with price impact, re-cente
 
 What is **cryptographic** today: order confidentiality (public *and* operator), uniform-price clearing, self-custody of collateral, and the on-chain price band.
 
-What is **trusted** today: operator liveness and censorship (the on-chain membership root makes censorship detectable, not impossible); the clearing computation itself (auditable, not ZK-proven); liquidation (off-chain keeper); and **margin backing an open position is not locked on-chain** — the one gap we would close first. See [SECURITY](./docs/SECURITY.md#️-known-gap-open-position-margin-is-not-locked-on-chain).
+What is **trusted** today: operator liveness and censorship (the on-chain membership root makes censorship detectable, not impossible); the clearing computation itself (auditable, not ZK-proven); and liquidation (off-chain keeper). Margin behind an open position *is* locked on-chain, so it cannot be withdrawn out from under a position. See [SECURITY](./docs/SECURITY.md).
 
 ## 6. Deliberate scope cuts
 
 | Cut | Why |
 |---|---|
 | ZK-proven clearing | A fixed-N circuit proving the uniform-price rule was applied correctly is the right v2 move, but the on-chain FTSO band already prevents the *harmful* version of a wrong price. |
-| On-chain liquidation | Needs the margin lock first; the two are coupled. |
+| On-chain liquidation | The margin lock landed; enforcing liquidation against the FTSO price the settlement contract already reads is the next step. |
 | Cross-margin / portfolio margin | Isolated margin keeps the accounting auditable, which matters more in v1 than capital efficiency. |
 | Per-order on-chain anchoring | One transaction per order is the wrong economics. The batch record proves membership for the whole epoch at once. |
 

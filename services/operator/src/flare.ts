@@ -101,6 +101,14 @@ const SETTLEMENT_ABI = [
   },
   { inputs: [], name: "epochCount", outputs: [{ type: "uint256" }], stateMutability: "view", type: "function" },
   { inputs: [], name: "maxDriftBps", outputs: [{ type: "uint256" }], stateMutability: "view", type: "function" },
+  {
+    inputs: [{ name: "trader", type: "address" }, { name: "amount", type: "uint256" }],
+    name: "lockMargin", outputs: [], stateMutability: "nonpayable", type: "function",
+  },
+  {
+    inputs: [{ name: "trader", type: "address" }, { name: "amount", type: "uint256" }],
+    name: "releaseMargin", outputs: [], stateMutability: "nonpayable", type: "function",
+  },
 ] as const;
 
 let _public: PublicClient | null = null;
@@ -301,4 +309,48 @@ export async function relayerBalance(): Promise<{ address: string; c2flr: number
   const a = relayer().address;
   const bal = await publicClient().getBalance({ address: a });
   return { address: a, c2flr: Number(bal) / 1e18 };
+}
+
+/**
+ * Make the vault's on-chain `locked` match the operator's ledger for one trader.
+ *
+ * This is what stops a trader withdrawing collateral that backs their own open
+ * position: the vault refuses a withdrawal above `balance - locked`, so the
+ * margin has to actually be locked *on-chain*, not merely recorded off-chain.
+ *
+ * Written as a reconciler rather than a call bolted onto each of the eight
+ * places margin moves: it is idempotent, it repairs drift from a failed or
+ * dropped transaction on the next call, and it can't wedge the trading path.
+ * Callers await it when margin is *increasing* (the safety-critical direction)
+ * and can fire it and forget when margin is being released.
+ *
+ * Returns the signed delta applied on-chain, or 0 when already in sync.
+ */
+export async function syncLockedMargin(trader: string, desiredLockedUsd: number): Promise<number> {
+  if (!flareConfigured()) return 0;
+  // Only an EVM account can hold a vault position; anything else (a test
+  // fixture, a legacy identifier) has nothing on-chain to reserve.
+  if (!/^0x[0-9a-fA-F]{40}$/.test(trader)) return 0;
+  const who = getAddress(trader);
+  const onChain = await vaultAccount(who);
+
+  const desired = usdToUnits(Math.max(0, desiredLockedUsd));
+  const current = usdToUnits(onChain.locked);
+  if (desired === current) return 0;
+
+  const wc = walletClient();
+  const account = relayer();
+  const increasing = desired > current;
+  const amount = increasing ? desired - current : current - desired;
+
+  const txHash = await wc.writeContract({
+    address: settlementAddress(),
+    abi: SETTLEMENT_ABI,
+    functionName: increasing ? "lockMargin" : "releaseMargin",
+    args: [who, amount],
+    account,
+    chain: flareChain,
+  });
+  await publicClient().waitForTransactionReceipt({ hash: txHash });
+  return unitsToUsd(increasing ? amount : -amount);
 }

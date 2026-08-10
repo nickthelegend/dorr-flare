@@ -14,7 +14,7 @@ import { runBatchAuctionDemo, clearBatchUniform, batchDigest } from "./batch.js"
 import { runSealedDemo, currentRound, secondsUntilRound, roundForTime } from "./sealbid.js";
 import {
   flareConfigured, vaultSolvency, fxrpInfo, vaultAccount, epochCount,
-  getBatchOnChain, explorerAddress, explorerTx, relayerBalance,
+  getBatchOnChain, explorerAddress, explorerTx, relayerBalance, syncLockedMargin,
 } from "./flare.js";
 import { enclaveConfigured, enclaveAddress } from "./attestation.js";
 import { resolveFtsoAddress } from "./ftso.js";
@@ -154,6 +154,28 @@ async function reconcileVault(address: string): Promise<number> {
   return acct.balance - before;
 }
 
+/**
+ * Push the ledger's locked margin for one trader onto the vault.
+ *
+ * Awaited where margin *increases* (commit, seal) so the chain reserves the
+ * collateral before we acknowledge the order. Fired and forgotten where margin
+ * is released — a late release only briefly under-reports a trader's own free
+ * balance, and the next call reconciles it anyway.
+ */
+async function lockMarginForTrader(address: string): Promise<void> {
+  if (!flareConfigured()) return;
+  await syncLockedMargin(address, account(address).locked);
+}
+
+/** Best-effort release; failures self-heal on the next reconcile. */
+function releaseMarginSoon(address: string): void {
+  if (!flareConfigured()) return;
+  void syncLockedMargin(address, account(address).locked).catch(() => {
+    /* the next commit/seal or the sweep will fix it */
+  });
+}
+
+
 app.get("/account/:address", async (c) => {
   const address = c.req.param("address");
   const acct = account(address);
@@ -230,19 +252,37 @@ app.post("/orders/commit", async (c) => {
   // Pick up collateral the trader deposited on-chain before judging free margin,
   // so a fresh wallet with FXRP in the vault isn't told it has none.
   await reconcileVault(p.address);
+  let committed;
   try {
-    const { order, jobId } = commitOrder(p);
-    return c.json({
-      success: true,
-      orderId: order.id,
-      jobId,
-      commitmentHash: order.commitmentHash,
-      sizeBase: order.sizeBase,
-      commitPrice: order.commitPrice,
-    });
+    committed = commitOrder(p);
   } catch (e) {
     return bad(c, String(e instanceof Error ? e.message : e));
   }
+
+  // Reserve the margin ON-CHAIN before acknowledging the order. Until the vault
+  // itself knows the collateral is committed, the trader could withdraw it out
+  // from under their own position. If the lock can't be made, undo the order
+  // rather than open a position the chain doesn't back.
+  try {
+    await lockMarginForTrader(p.address);
+  } catch (e) {
+    try {
+      cancelOrder(committed.order.id);
+    } catch {
+      /* best effort — the ledger release below is what matters */
+    }
+    return bad(c, `could not reserve margin on-chain: ${String(e instanceof Error ? e.message : e).slice(0, 160)}`, 503);
+  }
+
+  const { order, jobId } = committed;
+  return c.json({
+    success: true,
+    orderId: order.id,
+    jobId,
+    commitmentHash: order.commitmentHash,
+    sizeBase: order.sizeBase,
+    commitPrice: order.commitPrice,
+  });
 });
 
 app.post("/orders/:id/execute", async (c) => {
@@ -292,6 +332,7 @@ app.post("/positions/:id/close", async (c) => {
   if (authErr) return bad(c, authErr, 401);
   try {
     const { position, jobId } = closePosition(id, "close", fraction);
+    releaseMarginSoon(position.address);
     return c.json({ success: true, position, jobId });
   } catch (e) {
     return bad(c, String(e instanceof Error ? e.message : e));
@@ -307,7 +348,12 @@ app.post("/positions/:id/margin", async (c) => {
   const authErr = checkAuth("margin", { positionId: id, delta }, body, owner);
   if (authErr) return bad(c, authErr, 401);
   try {
-    return c.json({ success: true, position: adjustMargin(id, delta) });
+    const position = adjustMargin(id, delta);
+    // Adding margin raises the on-chain lock; removing it lowers it. Await the
+    // increase so the chain reserves it before we confirm.
+    if (delta > 0) await lockMarginForTrader(position.address);
+    else releaseMarginSoon(position.address);
+    return c.json({ success: true, position });
   } catch (e) {
     return bad(c, String(e instanceof Error ? e.message : e));
   }
@@ -339,7 +385,9 @@ app.post("/orders/:id/cancel", async (c) => {
   const authErr = checkAuth("cancel", { orderId: id }, body, owner);
   if (authErr) return bad(c, authErr, 401);
   try {
-    return c.json({ success: true, order: cancelOrder(id) });
+    const order = cancelOrder(id);
+    releaseMarginSoon(order.address);
+    return c.json({ success: true, order });
   } catch (e) {
     return bad(c, String(e instanceof Error ? e.message : e));
   }
@@ -551,12 +599,18 @@ app.post("/orders/seal", async (c) => {
   const authErr = checkAuth("seal", { commitment: p.commitment, targetRound: p.targetRound }, body, p.address);
   if (authErr) return bad(c, authErr, 401);
   await reconcileVault(p.address);
+  let so;
   try {
-    const so = addSealedOrder(p);
-    return c.json({ success: true, id: so.id, epochId: so.epochId, targetRound: so.targetRound, commitment: so.commitment });
+    so = addSealedOrder(p);
   } catch (e) {
     return bad(c, String(e instanceof Error ? e.message : e));
   }
+  try {
+    await lockMarginForTrader(p.address);
+  } catch (e) {
+    return bad(c, `could not reserve margin on-chain: ${String(e instanceof Error ? e.message : e).slice(0, 160)}`, 503);
+  }
+  return c.json({ success: true, id: so.id, epochId: so.epochId, targetRound: so.targetRound, commitment: so.commitment });
 });
 
 // settle a market's sealed epoch — decrypt (round permitting), clear at one price, open positions

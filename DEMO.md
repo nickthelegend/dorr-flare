@@ -46,7 +46,7 @@ bun run --cwd apps/web dev              # terminal B → http://localhost:3000
 
 ## The honest footnote (say it — it's a strength)
 
-"v1 has a trusted operator doing matching and execution, like a sequencer. What's cryptographic today: the operator can't see or front-run a sealed order, the epoch clears at one price, collateral is self-custodied, and the settlement contract enforces the price band on-chain. What's still trusted: operator liveness, the clearing math isn't ZK-proven, liquidation is off-chain — and margin backing an open position isn't locked on-chain yet, which is the first thing we'd fix."
+"v1 has a trusted operator doing matching and execution, like a sequencer. What's cryptographic today: the operator can't see or front-run a sealed order, the epoch clears at one price, collateral is self-custodied, and the settlement contract enforces the price band on-chain. What's still trusted: operator liveness, the clearing math isn't ZK-proven, and liquidation is off-chain. Margin behind an open position is locked in the vault, so you can't withdraw collateral backing your own trade — the chain refuses it."
 
 ## If something is slow on stage
 

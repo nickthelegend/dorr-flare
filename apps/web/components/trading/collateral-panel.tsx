@@ -197,7 +197,9 @@ export default function CollateralPanel() {
                   label === "Locked" && "text-warning",
                 )}
               >
-                {connected && account ? formatUsd(v ?? 0, 0) : "—"}
+                {/* FXRP amounts are small — rounding to whole units would show a
+                    3.6 balance as "4", which is wrong on a collateral readout. */}
+                {connected && account ? formatUsd(v ?? 0, 2) : "—"}
               </div>
             </div>
           ))}

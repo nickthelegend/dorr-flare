@@ -34,6 +34,9 @@ contract DorrBatchSettlement is ReentrancyGuard, Ownable {
     /// @notice Max age of the FTSO feed for a settlement to be accepted.
     uint64 public maxFeedAge = 300; // seconds
 
+    /// @notice Hot key permitted to lock/release margin. Defaults to the owner.
+    address public keeper;
+
     struct Batch {
         bytes32 membershipRoot; // commitment to the exact sealed order set
         uint256 clearingPrice;  // uniform price, 1e6 = 1.000000 USD
@@ -59,6 +62,7 @@ contract DorrBatchSettlement is ReentrancyGuard, Ownable {
     );
     event TEEVerifierUpdated(address indexed verifier);
     event RiskParamsUpdated(uint256 maxDriftBps, uint64 maxFeedAge);
+    event KeeperUpdated(address indexed keeper);
 
     error BatchExists();
     error NotAttested();
@@ -67,11 +71,18 @@ contract DorrBatchSettlement is ReentrancyGuard, Ownable {
     error ZeroAddress();
     error EmptyBatch();
     error LengthMismatch();
+    error NotKeeper();
+
+    modifier onlyKeeper() {
+        if (msg.sender != keeper && msg.sender != owner()) revert NotKeeper();
+        _;
+    }
 
     constructor(address _vault, address _teeVerifier, address _owner) Ownable(_owner) {
         if (_vault == address(0) || _teeVerifier == address(0)) revert ZeroAddress();
         vault = DorrVault(_vault);
         teeVerifier = ITEEAttestationVerifier(_teeVerifier);
+        keeper = _owner;
     }
 
     struct BatchInput {
@@ -189,8 +200,54 @@ contract DorrBatchSettlement is ReentrancyGuard, Ownable {
     }
 
     // ------------------------------------------------------------------
+    // Margin custody — the keeper reserves collateral behind an open position
+    // ------------------------------------------------------------------
+
+    /// @notice Reserve a trader's free collateral as margin for an open position.
+    /// @dev The vault only accepts margin calls from its settlement contract, so
+    ///      this is the passthrough. It is the difference between "the operator's
+    ///      ledger says your margin is committed" and "the chain will not let you
+    ///      withdraw it": without it a trader can withdraw collateral that is
+    ///      backing their own position, leaving a counterparty's zero-sum profit
+    ///      unbacked. Locking can never move value — `withdraw()` still pays only
+    ///      the depositor, and this cannot reduce anyone's balance.
+    function lockMargin(address trader, uint256 amount) external onlyKeeper {
+        vault.lockMargin(trader, amount);
+    }
+
+    /// @notice Release margin back to free when a position closes or shrinks.
+    function releaseMargin(address trader, uint256 amount) external onlyKeeper {
+        vault.releaseMargin(trader, amount);
+    }
+
+    /// @notice Batch form — one transaction per settled epoch instead of per order.
+    function lockMarginBatch(address[] calldata traders, uint256[] calldata amounts) external onlyKeeper {
+        if (traders.length != amounts.length) revert LengthMismatch();
+        for (uint256 i = 0; i < traders.length; i++) {
+            vault.lockMargin(traders[i], amounts[i]);
+        }
+    }
+
+    /// @notice Batch form of `releaseMargin`.
+    function releaseMarginBatch(address[] calldata traders, uint256[] calldata amounts) external onlyKeeper {
+        if (traders.length != amounts.length) revert LengthMismatch();
+        for (uint256 i = 0; i < traders.length; i++) {
+            vault.releaseMargin(traders[i], amounts[i]);
+        }
+    }
+
+    // ------------------------------------------------------------------
     // Admin / views
     // ------------------------------------------------------------------
+
+    /// @notice Set the hot key allowed to lock/release margin (defaults to the owner).
+    /// @dev Separated from `owner` so the key that signs margin calls on every trade
+    ///      can be rotated without touching contract ownership.
+    function setKeeper(address k) external onlyOwner {
+        if (k == address(0)) revert ZeroAddress();
+        keeper = k;
+        emit KeeperUpdated(k);
+    }
 
     function setTEEVerifier(address v) external onlyOwner {
         if (v == address(0)) revert ZeroAddress();
