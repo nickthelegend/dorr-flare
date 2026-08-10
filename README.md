@@ -82,7 +82,7 @@ Connect MetaMask on **Flare Coston2** (chain `114`) → claim test FXRP from [Fl
 ## Docs
 
 Full docs in [`docs/`](./docs) → [architecture](./docs/ARCHITECTURE.md) · [features](./docs/FEATURES.md) · [wallets & setup](./docs/WALLETS.md) · [API & contracts](./docs/API.md) · [security & honest scope](./docs/SECURITY.md) · [testing](./docs/TESTING.md).
-Also: design rationale in [DESIGN.md](./DESIGN.md) · stage script in [DEMO.md](./DEMO.md) · ops in [RUNBOOK.md](./RUNBOOK.md).
+Also: design rationale in [DESIGN.md](./DESIGN.md) · stage script in [DEMO.md](./DEMO.md) · **video script in [VIDEO.md](./VIDEO.md)** · ops in [RUNBOOK.md](./RUNBOOK.md).
 
 ## Testing
 

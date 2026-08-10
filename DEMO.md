@@ -1,5 +1,8 @@
 # dorr — demo script (≈3 min)
 
+> Recording instead of presenting? Use [VIDEO.md](./VIDEO.md) — same beats, with
+> timecodes, exact voiceover and shot direction.
+
 The one line: **on a public perp your order sits in the mempool and gets front-run. On dorr the operator itself only holds ciphertext until the batch is frozen — and the settlement contract rejects an off-market price.**
 
 ## Pre-flight (do before you're on stage)
