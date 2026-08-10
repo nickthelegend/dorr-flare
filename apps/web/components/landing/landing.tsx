@@ -1,19 +1,33 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion } from "framer-motion";
 import { ChevronRight, Menu, X } from "lucide-react";
 import { DorrMark } from "@/components/icons/dorr-mark";
 import { LaunchButton, gradientStyle } from "./primitives";
+import {
+  BandScene,
+  BlindScene,
+  ClearScene,
+  CrackScene,
+  ProofFigures,
+  ProofLedger,
+  SandwichScene,
+  SealScene,
+  useLandingMotion,
+  type Figure,
+  type ProofRow,
+} from "./scenes";
 
 /**
  * The dorr landing page.
  *
- * One header, six anchored sections, and a single authored motion moment (the
- * hero). Below the fold sections reveal on their own terms rather than repeating
- * one entrance animation six times.
+ * One header, six anchored sections. The hero is a still frame on purpose —
+ * everything below it is scroll-driven by GSAP, and each section carries a
+ * diagram that performs its own claim rather than repeating one entrance
+ * animation six times. See `scenes.tsx` for the scenes themselves.
  *
  * Everything here is marketing surface — it renders with no operator running and
  * cannot touch `components/trading/*`.
@@ -32,45 +46,47 @@ const STEPS = [
     n: "01",
     title: "You seal it in the browser",
     body: "Your order is timelock-encrypted to a drand round that has not been published yet. What leaves your machine is ciphertext plus a 32-byte commitment.",
-    stat: "AES-GCM · BLS12-381",
+    Scene: SealScene,
   },
   {
     n: "02",
     title: "The operator holds bytes it cannot open",
     body: "Not a policy — the League of Entropy is a live 12-of-22 threshold network, and the beacon for that round does not exist yet. We have the ciphertext and no way in.",
-    stat: "decrypt → REFUSED",
+    Scene: BlindScene,
   },
   {
     n: "03",
     title: "The epoch clears at one price",
     body: "When the round lands, every order in the batch settles at a single uniform price. A bot that front-runs and back-runs buys and sells at the same number.",
-    stat: "sandwich → $0.00",
+    Scene: ClearScene,
   },
   {
     n: "04",
     title: "The chain checks our arithmetic",
     body: "DorrBatchSettlement re-reads FTSO v2 itself and reverts PriceOutOfBand if our clearing price is off-market. The referee is Flare, not us.",
-    stat: "reverts on drift > 200 bps",
+    Scene: BandScene,
   },
 ];
 
-const PROOF = [
+const PROOF: readonly ProofRow[] = [
   { k: "DorrVault", v: "0x65b705A4…", note: "FXRP margin, depositor-only withdrawal" },
   { k: "DorrBatchSettlement", v: "0x047478DE…", note: "FTSO re-read + enclave quote" },
   { k: "TEEAttestationVerifier", v: "0x578D75dD…", note: "quote bound to one batch" },
 ];
 
-const NUMBERS = [
-  { v: "6", l: "markets on FTSO v2" },
-  { v: "20×", l: "max leverage" },
-  { v: "125", l: "tests, all green" },
-  { v: "0", l: "orders the operator can read" },
+const NUMBERS: readonly Figure[] = [
+  { to: 6, suffix: "", label: "markets on FTSO v2" },
+  { to: 20, suffix: "×", label: "max leverage" },
+  { to: 125, suffix: "", label: "tests, all green" },
+  { to: 0, suffix: "", label: "orders the operator can read" },
 ];
 
 export function Landing() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [active, setActive] = useState<string>("terminal");
-  const reduce = useReducedMotion();
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useLandingMotion(rootRef);
 
   // Light-up the nav item for whichever section owns the viewport.
   useEffect(() => {
@@ -90,20 +106,8 @@ export function Landing() {
     return () => obs.disconnect();
   }, []);
 
-  // Transform-only, never opacity: if IntersectionObserver never fires — a
-  // crawler, a screenshot, a browser with motion disabled — the copy is still
-  // on the page. Motion is the enhancement, not the gate.
-  const rise = reduce
-    ? {}
-    : {
-        initial: { y: 22 },
-        whileInView: { y: 0 },
-        viewport: { once: true, margin: "-80px" },
-        transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] as const },
-      };
-
   return (
-    <div className="landing-root relative min-h-screen bg-[#0c0c0c] text-white">
+    <div ref={rootRef} className="landing-root relative min-h-screen bg-[#0c0c0c] text-white">
       {/* ── ambient backdrop ── */}
       <div className="fixed inset-0 z-0 pointer-events-none">
         <video
@@ -248,13 +252,7 @@ export function Landing() {
 
         {/* ── 2 · the terminal, for real ── */}
         <section id="terminal" className="scroll-mt-20 px-6 pb-24 md:pb-32">
-          <motion.figure
-            initial={reduce ? false : { y: 36, scale: 0.985 }}
-            whileInView={{ y: 0, scale: 1 }}
-            viewport={{ once: true, margin: "-60px" }}
-            transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
-            className="max-w-6xl mx-auto"
-          >
+          <figure data-terminal className="max-w-6xl mx-auto will-change-transform">
             <div className="relative rounded-xl overflow-hidden border border-white/10 shadow-[0_50px_140px_-40px_rgba(3,68,220,0.5)]">
               <Image
                 src="/assets/trade-terminal.png"
@@ -269,13 +267,13 @@ export function Landing() {
             <figcaption className="mt-5 text-center text-xs text-white/40">
               The real terminal, not a render — every price on it came from FTSO v2 on Coston2.
             </figcaption>
-          </motion.figure>
+          </figure>
         </section>
 
         {/* ── 3 · how it works ── */}
         <section id="sealed" className="scroll-mt-20 px-6 py-20 md:py-28 border-t border-white/[0.07]">
           <div className="max-w-6xl mx-auto">
-            <motion.div {...rise} className="max-w-2xl">
+            <div data-rise className="max-w-2xl">
               <h2 className="text-3xl md:text-5xl font-semibold tracking-[-0.03em] leading-[1.04] text-balance">
                 Four steps. The third one
                 <br className="hidden sm:block" /> is the one nobody else does.
@@ -283,29 +281,27 @@ export function Landing() {
               <p className="mt-5 text-white/55 text-[15px] leading-relaxed max-w-lg text-pretty">
                 Hiding an order from the public is table stakes. Hiding it from the venue that
                 matches it is the hard part — and it only matters if the settlement price can
-                still be audited afterwards.
+                still be audited afterwards. Scroll each step and watch it happen.
               </p>
-            </motion.div>
+            </div>
 
             <ol className="mt-14 grid gap-px bg-white/[0.07] md:grid-cols-2 rounded-xl overflow-hidden border border-white/[0.07]">
-              {STEPS.map((s, i) => (
-                <motion.li
+              {STEPS.map((s) => (
+                <li
                   key={s.n}
-                  initial={reduce ? false : { y: 14 }}
-                  whileInView={{ y: 0 }}
-                  viewport={{ once: true, margin: "-40px" }}
-                  transition={{ duration: 0.6, delay: i * 0.08, ease: [0.22, 1, 0.36, 1] }}
-                  className="group relative bg-[#0c0c0c] p-7 md:p-9 transition-colors hover:bg-[#101319]"
+                  className="group relative flex flex-col bg-[#0c0c0c] p-7 md:p-9 transition-colors hover:bg-[#101319]"
                 >
-                  <div className="flex items-baseline gap-4">
+                  <div data-rise className="flex items-baseline gap-4">
                     <span className="font-mono text-xs text-[#2C6BFF] tabular-nums">{s.n}</span>
                     <h3 className="text-lg md:text-xl font-semibold tracking-tight">{s.title}</h3>
                   </div>
                   <p className="mt-3 ml-0 md:ml-10 text-sm text-white/55 leading-relaxed max-w-md text-pretty">
                     {s.body}
                   </p>
-                  <p className="mt-4 ml-0 md:ml-10 font-mono text-[11px] text-white/35">{s.stat}</p>
-                </motion.li>
+                  <div className="mt-auto pt-7 md:ml-10">
+                    <s.Scene />
+                  </div>
+                </li>
               ))}
             </ol>
           </div>
@@ -314,7 +310,7 @@ export function Landing() {
         {/* ── 4 · attack lab ── */}
         <section id="attack" className="scroll-mt-20 px-6 py-20 md:py-28 border-t border-white/[0.07]">
           <div className="max-w-6xl mx-auto grid lg:grid-cols-[1fr_1.15fr] gap-12 lg:gap-16 items-center">
-            <motion.div {...rise}>
+            <div data-rise>
               <h2 className="text-3xl md:text-5xl font-semibold tracking-[-0.03em] leading-[1.04] text-balance">
                 Run the attack yourself.
               </h2>
@@ -330,41 +326,19 @@ export function Landing() {
               <div className="mt-8">
                 <LaunchButton label="Open the Attack Lab" href="/trade" />
               </div>
-            </motion.div>
+            </div>
 
-            <motion.div {...rise} className="grid sm:grid-cols-2 gap-4">
-              <div className="rounded-xl border border-rose-500/25 bg-rose-500/[0.05] p-6">
-                <p className="text-[11px] uppercase tracking-widest text-rose-300/80">
-                  Transparent DEX
-                </p>
-                <p className="mt-4 font-mono text-3xl font-semibold tabular-nums text-rose-400">
-                  −$152.90
-                </p>
-                <p className="mt-1 font-mono text-xs text-rose-300/60">152.1 bps stolen</p>
-                <p className="mt-5 text-sm text-white/50 leading-relaxed">
-                  The bot reads the order, buys ahead, and sells into the fill.
-                </p>
-              </div>
-              <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/[0.05] p-6">
-                <p className="text-[11px] uppercase tracking-widest text-emerald-300/80">
-                  dorr, sealed
-                </p>
-                <p className="mt-4 font-mono text-3xl font-semibold tabular-nums text-emerald-400">
-                  0 / 25,000
-                </p>
-                <p className="mt-1 font-mono text-xs text-emerald-300/60">commitment cracks</p>
-                <p className="mt-5 text-sm text-white/50 leading-relaxed">
-                  No side, no size, no price. The sandwich cannot even be constructed.
-                </p>
-              </div>
-            </motion.div>
+            <div data-rise className="grid sm:grid-cols-2 gap-4">
+              <SandwichScene />
+              <CrackScene />
+            </div>
           </div>
         </section>
 
         {/* ── 5 · proof ── */}
         <section id="proof" className="scroll-mt-20 px-6 py-20 md:py-28 border-t border-white/[0.07]">
           <div className="max-w-6xl mx-auto">
-            <motion.div {...rise} className="max-w-2xl">
+            <div data-rise className="max-w-2xl">
               <h2 className="text-3xl md:text-5xl font-semibold tracking-[-0.03em] leading-[1.04] text-balance">
                 Every claim on this page
                 <br className="hidden sm:block" /> has an address.
@@ -374,64 +348,43 @@ export function Landing() {
                 depositor can withdraw — we hold no minting authority over it, which is exactly why
                 the solvency figure means something.
               </p>
-            </motion.div>
+            </div>
 
-            <motion.dl {...rise} className="mt-12 divide-y divide-white/[0.07] border-y border-white/[0.07]">
-              {PROOF.map((p) => (
-                <div key={p.k} className="grid sm:grid-cols-[1fr_auto] gap-2 sm:gap-8 py-5 items-baseline">
-                  <div>
-                    <dt className="text-sm font-medium">{p.k}</dt>
-                    <dd className="mt-1 text-xs text-white/45">{p.note}</dd>
-                  </div>
-                  <dd className="font-mono text-xs text-[#7AA6FF]">{p.v}</dd>
-                </div>
-              ))}
-            </motion.dl>
+            <ProofLedger rows={PROOF} className="mt-12" />
 
-            <motion.div {...rise} className="mt-14 grid grid-cols-2 lg:grid-cols-4 gap-8">
-              {NUMBERS.map((n) => (
-                <div key={n.l}>
-                  <p className="font-mono text-4xl md:text-5xl font-semibold tabular-nums tracking-tight">
-                    {n.v}
-                  </p>
-                  <p className="mt-2 text-xs text-white/45 leading-snug">{n.l}</p>
-                </div>
-              ))}
-            </motion.div>
+            <ProofFigures items={NUMBERS} className="mt-14" />
 
-            <motion.p {...rise} className="mt-14 max-w-2xl text-sm text-white/40 leading-relaxed">
+            <p data-rise className="mt-14 max-w-2xl text-sm text-white/40 leading-relaxed">
               <span className="text-white/70">Honest scope:</span> v1 runs a trusted operator for
               matching and execution, like a sequencer. What is cryptographic today is that it
               cannot see or front-run a sealed order, the epoch clears at one price, collateral is
               self-custodied, and the settlement contract enforces the price band on-chain. The
               clearing arithmetic is not yet ZK-proven.
-            </motion.p>
+            </p>
           </div>
         </section>
 
         {/* ── 6 · access ── */}
         <section id="access" className="scroll-mt-20 px-6 py-20 md:py-32 border-t border-white/[0.07]">
-          <motion.div
-            {...rise}
-            className="max-w-4xl mx-auto relative overflow-hidden rounded-2xl border border-white/10 px-8 py-16 md:py-24 text-center"
-          >
+          <div className="max-w-4xl mx-auto relative overflow-hidden rounded-2xl border border-white/10 px-8 py-16 md:py-24 text-center">
             <div
-              className="absolute inset-0 pointer-events-none"
+              data-glow
+              className="absolute inset-0 pointer-events-none will-change-transform"
               style={{
                 background:
                   "radial-gradient(700px circle at 50% -10%, rgba(44,107,255,0.22), transparent 65%)",
               }}
             />
             <div className="relative">
-              <h2 className="text-3xl md:text-6xl font-semibold tracking-[-0.03em] leading-[1.02] text-balance">
+              <h2 data-rise className="text-3xl md:text-6xl font-semibold tracking-[-0.03em] leading-[1.02] text-balance">
                 Stop paying
                 <br /> the timing tax.
               </h2>
-              <p className="mt-6 text-white/55 max-w-md mx-auto text-[15px] leading-relaxed text-pretty">
+              <p data-rise className="mt-6 text-white/55 max-w-md mx-auto text-[15px] leading-relaxed text-pretty">
                 No waitlist and no signup — connect a wallet on Coston2, claim test FXRP, and the
                 terminal is yours.
               </p>
-              <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
+              <div data-rise className="mt-9 flex flex-wrap items-center justify-center gap-3">
                 <LaunchButton label="Open the terminal" />
                 <a
                   href="https://github.com/nickthelegend/dorr-flare"
@@ -444,7 +397,7 @@ export function Landing() {
                 </a>
               </div>
             </div>
-          </motion.div>
+          </div>
         </section>
       </main>
 
@@ -460,8 +413,8 @@ export function Landing() {
                 {s.label}
               </a>
             ))}
-            <Link href="/trade" className="hover:text-white/70 transition-colors">
-              Terminal
+            <Link href="/trade" className="text-white/60 hover:text-white transition-colors">
+              Launch app
             </Link>
           </div>
         </div>
