@@ -3,9 +3,9 @@
 # dorr
 
 **Perpetual futures you can't front-run.**
-Private order flow on **Cardano** + **Midnight** — your order is a zero-knowledge commitment until it settles, so the mempool, MEV bots, and other traders never see it coming.
+Private order flow on **Flare** — your order is a commitment the operator itself can't read, and the batch that settles it is checked against **FTSO v2** on-chain before the chain will accept it.
 
-`ADA · BTC · ETH · SOL · DOGE` · up to 20× · dUSD-margined · settled + audit-anchored on Cardano
+`FLR · XRP · BTC · ETH · SOL · DOGE` · up to 20× · **FXRP**-margined · settled on Flare Coston2
 
 </div>
 
@@ -15,80 +15,87 @@ Private order flow on **Cardano** + **Midnight** — your order is a zero-knowle
 
 On every public perp DEX your order sits in the mempool before it executes. Searchers read it, trade ahead of it, and sandwich you. On a leveraged product that timing tax is brutal — and it's structural, not a bug.
 
+Sealing the order from the *public* isn't enough either: the venue that matches it can still read it, and nothing stops a venue from settling your batch at a price it made up.
+
 ## What dorr does
 
-You commit an order as a **SHA-256 commitment on Midnight** with a zero-knowledge proof of validity. The public sees only a 32-byte hash — never the side, size, leverage, or price. It executes against an oracle-priced virtual AMM, and the settlement digest is **anchored on Cardano L1** with an inline datum that reveals nothing but proves it happened.
+Your browser **timelock-encrypts** the order to a future drand round, so the operator receives ciphertext it provably cannot open until the batch is already frozen. The epoch then clears at **one uniform price**, and the result is submitted to `DorrBatchSettlement` on Flare — a contract that **independently re-reads the FTSO v2 feed** and reverts if the clearing price is out of band, and that verifies a TEE attestation bound to that exact batch.
 
 ```mermaid
 flowchart LR
-  U[Trader + Lace] -->|1 order| OP[dorr operator]
-  OP -->|2 commit + ZK proof| MN[(Midnight<br/>order is a hash)]
-  OP -->|3 fill| V[oracle vAMM · Pyth]
-  OP -->|4 settle digest| MN
-  OP -->|5 anchor| CD[(Cardano preprod<br/>auditable L1)]
-  PY[Pyth Hermes] -.prices.-> OP
-  style MN fill:#0b7,stroke:#0b7,color:#fff
+  U[Trader + MetaMask] -->|1 seal to drand round R| OP[dorr operator<br/>holds ciphertext only]
+  OP -->|2 at round R: open + clear| BA[uniform-price<br/>batch auction]
+  BA -->|3 enclave signs the batch| TEE[confidential<br/>compute]
+  OP -->|4 settleBatch| FL[(Flare Coston2<br/>DorrBatchSettlement)]
+  FT[FTSO v2] -.contract re-reads.-> FL
+  FL -.reverts PriceOutOfBand.-> OP
+  style FL fill:#e62058,stroke:#e62058,color:#fff
 ```
 
 **The A/B proof:** flip one toggle. In *public* mode the order leaks and a bot sandwiches you (~150 bps stolen). In *dorr* mode the same order is a hash — the bot is blind, you fill fair.
 
-**Real privacy — even from the operator.** A commitment hides your order from the *public*; dorr also hides it from the *operator* with **drand timelock encryption**. Your client seals the order to a future drand round (the League of Entropy — a live 12-of-22 threshold network), so the operator holds only ciphertext and **cannot decrypt it until the batch is frozen** — it never sees your order in time to front-run. *Verified live: the operator's decrypt is refused (`"too early — decryptable at round N"`).*
+**Operator-blind, not just public-blind.** The client seals to a drand round (the League of Entropy — a live 12-of-22 threshold network), so the operator holds only ciphertext and **cannot decrypt until the batch is frozen**. *Verified live: the operator's decrypt is refused (`"too early — decryptable at round N"`).*
 
-**Front-running made *impossible*, not just invisible.** dorr clears orders in **uniform-price batch auctions**: every order in an epoch settles at one price, so a bot that inserts a front-run + back-run buys and sells at the *same* price — the sandwich nets **$0 by construction** (live: `$0.00` vs `$152` on a sequential venue). And because a v1 operator custodies collateral, `GET /ops/solvency` publishes an attestation that the **on-chain vault ≥ every credited balance**, verifiable by anyone against the vault address. Plus **commit-time L1 anchoring** (timestamp your commitment on Cardano — provable existence, hidden contents), private limit orders, hidden stop-loss/take-profit (no stop-hunting), selective disclosure, an oracle-divergence guard, per-market open-interest caps, and live exchange stats. Details in [FEATURES.md](./docs/FEATURES.md).
+**Front-running made *impossible*, not just invisible.** Every order in an epoch settles at one price, so a bot that inserts a front-run + back-run buys and sells at the *same* price — the sandwich nets **$0 by construction** (live: `$0.00` vs `$152` on a sequential venue).
 
-## Proven live
+**The chain is the referee.** `DorrBatchSettlement.settleBatch` re-reads FTSO itself and reverts `PriceOutOfBand` beyond `maxDriftBps` — observed rejecting a real batch in testing. `DorrVault` pays out only to the depositor, and settlement can only move PnL that sums to zero. Plus private limit orders, hidden stop-loss/take-profit, selective disclosure, and a live solvency attestation. Details in [FEATURES.md](./docs/FEATURES.md).
 
-One real run on Cardano **preprod** + a local **Midnight** network — 4 real ZK proofs and 6 on-chain txs, order contents never exposed:
+## Proven live on Coston2
 
-| leg | where | tx |
-|---|---|---|
-| user-signed vault deposit | preprod | `856ef149…` |
-| commit + ZK authority proof | Midnight | `78baabe2…` |
-| ZK match attestation | Midnight | `0123d381…` |
-| CIP-68 position NFT | preprod | `58262448…` |
-| ZK settlement proof | Midnight | `048684da…` |
-| **L1 settlement anchor** | preprod | `4b68a747…` |
-| ZK Midnight↔Cardano bind | Midnight | `69037ef7…` |
-| operator-signed vault withdraw | preprod | `407fc6e4…` |
+Driven from the browser with a real wallet — every leg is a real transaction:
 
-Full hashes + explorer links in [RUNBOOK.md](./RUNBOOK.md).
+| leg | tx |
+|---|---|
+| FXRP approve + **vault deposit** | [`0x1d716fc5…`](https://coston2-explorer.flare.network/tx/0x1d716fc540915da12051700e4a74b74160804b8bf45d60ab2f0b99149b910b71) |
+| **sealed batch settled on Flare** (FTSO re-read + enclave quote verified) | [`0xc3a1c184…`](https://coston2-explorer.flare.network/tx/0xc3a1c184d35ccb1799425df0) |
+| earlier sealed batch | [`0xd942461e…`](https://coston2-explorer.flare.network/tx/0xd942461ed322c2a83f974c98ef16e863d6a014aeb49e4ff8db24e466cc995619) |
+| **depositor-signed withdrawal** (operator uninvolved) | [`0x32d2aad1…`](https://coston2-explorer.flare.network/tx/0x32d2aad1f82f3b1ea3791a397f40cdd78de04aefbdab88351c134473baa98bd2) |
+
+Deployed contracts:
+
+| contract | address |
+|---|---|
+| `DorrVault` (FXRP margin) | [`0x65b705A4…`](https://coston2-explorer.flare.network/address/0x65b705A49778b9d7bD741A0A979162393c699a98) |
+| `DorrBatchSettlement` | [`0x0F99f3a1…`](https://coston2-explorer.flare.network/address/0x0F99f3a1486D167A9c903F336f1b56869c30e583) |
+| `TEEAttestationVerifier` | [`0x578D75dD…`](https://coston2-explorer.flare.network/address/0x578D75dDbce7fBB05072b733F372De2241d698aE) |
 
 ## Quickstart
 
 ```bash
 bun install
-./tools/scripts/dev.sh up            # Midnight localnet (docker)
-./tools/scripts/dev.sh fund-midnight # once
-./tools/scripts/dev.sh operator      # :8790
-./tools/scripts/dev.sh web           # :3000
+bun run --cwd services/operator start   # :8791
+bun run --cwd apps/web dev              # :3000
 ```
-Connect Lace (preprod) → faucet dUSD → deposit → trade. To settle on L1, fund the deployer (address + steps in [RUNBOOK.md](./RUNBOOK.md)) and run `./tools/scripts/dev.sh preprod`.
+
+Connect MetaMask on **Flare Coston2** (chain `114`) → claim test FXRP from [Flare's faucet](https://faucet.flare.network/coston2) → deposit from the Collateral panel → trade. dorr holds no minting authority over FXRP; collateral is a real asset the vault custodies non-custodially.
 
 ## Architecture
 
 | Path | What |
 |---|---|
-| `apps/web` | Next.js trading terminal (UniPerp UI) → Mesh/Lace wallet + operator API |
-| `services/operator` | 5 markets on Pyth Hermes, vAMM executor, margin/funding/liquidation, ZK job driver, Cardano tx layer, A/B demo |
-| `packages/engine` | off-chain perps engine (from the ZKPerps research) |
-| `packages/contracts-aiken` | dUSD policy · operator margin vault · settlement anchor (Plutus V3) |
-| `vendor/zkperps` | 5 Midnight Compact contracts + per-trade proof drivers |
+| `apps/web` | Next.js trading terminal → EIP-1193 wallet (Coston2), browser-side drand sealing, operator API |
+| `services/operator` | 6 markets on **FTSO v2**, vAMM executor, margin/funding/liquidation, sealed-bid batch keeper, Flare tx layer |
+| `services/operator/src/enclave` | confidential matching engine — holds the ECIES key, signs batch attestations |
+| `contracts` | `DorrVault` · `DorrBatchSettlement` · `TEEAttestationVerifier` (Solidity/Foundry) |
+| `packages/engine` | off-chain perps engine (commitments, uniform-price clearing, margin math) |
 
 ## Docs
 
-Full docs in [`docs/`](./docs) → [architecture](./docs/ARCHITECTURE.md) (diagrams) · [features](./docs/FEATURES.md) · [Midnight↔Cardano link](./docs/MIDNIGHT_CARDANO.md) · [wallets & setup](./docs/WALLETS.md) · [API & contracts](./docs/API.md) · [security & privacy](./docs/SECURITY.md) · [testing](./docs/TESTING.md).
+Full docs in [`docs/`](./docs) → [architecture](./docs/ARCHITECTURE.md) · [features](./docs/FEATURES.md) · [wallets & setup](./docs/WALLETS.md) · [API & contracts](./docs/API.md) · [security & honest scope](./docs/SECURITY.md) · [testing](./docs/TESTING.md).
 Also: design rationale in [DESIGN.md](./DESIGN.md) · stage script in [DEMO.md](./DEMO.md) · ops in [RUNBOOK.md](./RUNBOOK.md).
 
 ## Testing
 
-79 automated tests (green — 74 operator + 5 engine, covering the **sealed-bid timelock privacy + execution path against LIVE drand**, batch auction, oracle guard, cancel, stats, OI caps, privacy/MEV, auth-crypto, vAMM, CIP-68 emulator) + an assertive on-chain E2E that runs the full commit→execute→close lifecycle with real preprod txs and confirms each on Koios (deposit · faucet · CIP-68 NFT · L1 anchor · vault withdraw). See [docs/TESTING.md](./docs/TESTING.md).
+**87 operator tests + 22 Solidity tests**, all green. Coverage includes the sealed-bid timelock path against **live drand**, uniform-price batch clearing, selective disclosure (including re-opening a sealed order's ciphertext), EIP-191 auth against real keys, the FTSO drift guard, TEE attestation binding, and a `DorrVault` fuzz run asserting a withdrawal can never exceed free balance. See [docs/TESTING.md](./docs/TESTING.md).
 
 ## Honest scope (v1)
 
-dorr's guarantee today is **the public cannot see or front-run your order**, with an **auditable L1 trail**. It is *not yet* trustless: a trusted operator (like a sequencer) does matching/execution and custodies collateral, and the ZK layer attests the pipeline rather than enforcing the trade math on-chain. The path to trustless settlement — Pyth Lazer on Cardano + an Aiken settlement/liquidation validator — is mapped in [DESIGN.md](./DESIGN.md).
+dorr's guarantee today: **neither the public nor the operator can see or front-run a sealed order**, the epoch clears at one price, collateral is **self-custodied**, and the settlement contract **rejects an off-market price**.
+
+What is still trusted: the operator for **liveness/censorship** (the on-chain membership root makes censorship detectable, not impossible); the **uniform-price computation** is auditable but not ZK-proven; **liquidation runs off-chain**; and — the one gap worth naming loudly — **margin backing an open position is not locked on-chain**, so a trader can withdraw collateral that backs their own position. That fix needs a contract change and is the top v2 item. Full detail, including the threat-model table, in [SECURITY.md](./docs/SECURITY.md).
 
 ## Tech
 
-Cardano · Midnight (Compact ZK) · Aiken (Plutus V3) · Mesh + Lace · Lucid Evolution · Pyth · Next.js · Bun · TypeScript
+Flare (Coston2) · FTSO v2 · FAssets/FXRP · Solidity + Foundry · drand timelock (tlock) · confidential compute (TEE attestation) · viem · Next.js · Bun · TypeScript
 
-<div align="center"><sub>Built by fusing UniPerp (perps) with the Anti-Front-Running-ZKPerps research (privacy).</sub></div>
+<div align="center"><sub>Perps core from UniPerp; anti-front-running approach inspired by Nucast's Anti-Front-Running-ZKPerps research.</sub></div>

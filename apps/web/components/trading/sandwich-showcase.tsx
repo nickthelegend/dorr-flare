@@ -4,6 +4,9 @@ import { useState } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -237,6 +240,14 @@ export function SandwichShowcase() {
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-2xl" showCloseButton>
+        {/* The panel carries its own visual heading, so name the dialog for
+            screen readers without duplicating it on screen. */}
+        <DialogHeader className="sr-only">
+          <DialogTitle>A/B sandwich showcase</DialogTitle>
+          <DialogDescription>
+            Run the same order publicly and privately to compare what a sandwich bot can extract.
+          </DialogDescription>
+        </DialogHeader>
         <AbShowcaseBody />
       </DialogContent>
     </Dialog>

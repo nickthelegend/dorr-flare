@@ -18,11 +18,14 @@ export interface Account {
   /** vault deposit txs already credited (idempotency). */
   creditedUtxos: string[];
   /**
-   * Last on-chain DorrVault balance observed for this address. Deposits and
-   * withdrawals are credited as the *delta* against this watermark, so the
-   * trader's accumulated off-chain PnL is preserved across reconciliations.
+   * Realized PnL (net of fees and funding) accumulated off-chain by the vAMM.
+   *
+   * Collateral itself is never tracked here — it lives in the DorrVault, which
+   * is the only thing that can move FXRP. The tradable balance is re-derived on
+   * every reconciliation as `vault.balanceOf(trader) + pnlCum`, so a deposit is
+   * always spendable and a lost/blank ledger can never strand real collateral.
    */
-  onChainSeen?: number;
+  pnlCum?: number;
 }
 
 export interface DorrOrder {

@@ -4,6 +4,9 @@ import { useState } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
@@ -310,6 +313,14 @@ export function DisclosureDialog({ position }: { position?: Position }) {
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg" showCloseButton>
+        {/* The panel carries its own visual heading, so name the dialog for
+            screen readers without duplicating it on screen. */}
+        <DialogHeader className="sr-only">
+          <DialogTitle>Selective disclosure</DialogTitle>
+          <DialogDescription>
+            Open this position to a chosen party, or verify a disclosure you were handed against its commitment.
+          </DialogDescription>
+        </DialogHeader>
         <Tabs value={tab} onValueChange={setTab} className="gap-4">
           <TabsList className="w-full">
             <TabsTrigger value="disclose" className="gap-1.5">

@@ -11,6 +11,7 @@
  */
 import { orderCommitmentHex, type OrderCommitmentInput } from "@dorr/engine/order/commitment";
 import { getState } from "./state.js";
+import { openSealed } from "./sealbid.js";
 
 export interface Disclosure {
   kind: "dorr-selective-disclosure/v1";
@@ -25,20 +26,54 @@ export interface Disclosure {
   statement: string;
 }
 
-export function buildDisclosure(orderId: string, audience: string): Disclosure {
-  const order = getState().orders.find((o) => o.id === orderId);
-  if (!order) throw new Error("order not found");
-  const revealed: OrderCommitmentInput = {
-    pairId: order.marketId,
-    side: order.side,
-    price: order.commitPrice.toFixed(8),
-    size: order.sizeBase.toFixed(8),
-    leverage: order.leverage,
-    margin: order.marginUsd.toFixed(2),
-    nonce: order.nonce,
-  };
+export async function buildDisclosure(orderId: string, audience: string): Promise<Disclosure> {
+  const st = getState();
+  const order = st.orders.find((o) => o.id === orderId);
+
+  let revealed: OrderCommitmentInput;
+  let commitment: string;
+
+  if (order) {
+    revealed = {
+      pairId: order.marketId,
+      side: order.side,
+      price: order.commitPrice.toFixed(8),
+      size: order.sizeBase.toFixed(8),
+      leverage: order.leverage,
+      margin: order.marginUsd.toFixed(2),
+      nonce: order.nonce,
+    };
+    commitment = order.commitmentHash;
+  } else {
+    // A position opened through the sealed path is backed by a SealedOrder, not
+    // a plaintext order. The operator never stored its contents — it only holds
+    // the timelock ciphertext — so re-open that to recover the preimage. This
+    // only works once the epoch's drand round has landed, which is exactly the
+    // point at which the order became disclosable at all.
+    const sealed = st.sealedOrders.find((o) => o.id === orderId);
+    if (!sealed) throw new Error("order not found");
+    let preimage;
+    try {
+      preimage = await openSealed(sealed.ciphertext);
+    } catch (e) {
+      throw new Error(
+        `this order is still sealed — it becomes disclosable once drand round ${sealed.targetRound} lands`,
+      );
+    }
+    revealed = {
+      pairId: preimage.marketId,
+      side: preimage.side,
+      price: preimage.price.toFixed(8),
+      size: preimage.sizeBase.toFixed(8),
+      leverage: preimage.leverage,
+      margin: preimage.marginUsd.toFixed(2),
+      nonce: preimage.nonce,
+    };
+    commitment = sealed.commitment;
+  }
+
   // sanity: the opened preimage must reproduce the committed hash
-  if (orderCommitmentHex(revealed) !== order.commitmentHash) {
+  if (orderCommitmentHex(revealed) !== commitment) {
     throw new Error("internal: order preimage does not match its commitment");
   }
   return {
@@ -46,12 +81,12 @@ export function buildDisclosure(orderId: string, audience: string): Disclosure {
     subject: "order",
     orderId,
     audience: audience || "auditor",
-    commitment: order.commitmentHash,
+    commitment,
     revealed,
     issuedAt: new Date().toISOString(),
     statement:
-      "SHA-256(canonical(revealed)) == commitment, the value committed on Midnight and anchored on Cardano. " +
-      "The public only ever saw `commitment`; this disclosure reveals the position solely to its holder.",
+      "SHA-256(canonical(revealed)) == commitment, the value the public saw when this order was placed. " +
+      "Everyone else still sees only `commitment`; this disclosure opens the position solely to its chosen audience.",
   };
 }
 

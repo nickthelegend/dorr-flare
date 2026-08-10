@@ -126,14 +126,17 @@ app.post("/faucet", (c) =>
 /**
  * Reconcile a trader's margin ledger against the on-chain DorrVault.
  *
- * The vault is authoritative for *collateral movements* — FXRP enters via the
- * depositor's own `deposit()` and leaves only via their own `withdraw()`. It is
- * NOT authoritative for the trading balance, because realized PnL from the vAMM
- * lives in this off-chain ledger (v1 trusted-operator model). So we credit the
- * *delta* against a per-account watermark: a new deposit adds to the tradable
- * balance, a withdrawal subtracts, and accumulated PnL survives untouched.
+ * Collateral is the vault's business — FXRP enters via the depositor's own
+ * `deposit()` and leaves only via their own `withdraw()`. Realized PnL is the
+ * ledger's business. So the tradable balance is simply re-derived:
  *
- * Returns the amount credited (positive for a deposit) so callers can log it.
+ *     balance = vault.accountOf(trader).balance + pnlCum
+ *
+ * That makes a deposit spendable the moment it confirms, a withdrawal reflected
+ * immediately, and — because collateral is never *stored* here — it is
+ * impossible for a blank or damaged ledger to strand a trader's real FXRP.
+ *
+ * Returns the change in balance (positive when collateral arrived).
  */
 async function reconcileVault(address: string): Promise<number> {
   if (!flareConfigured()) return 0;
@@ -144,19 +147,11 @@ async function reconcileVault(address: string): Promise<number> {
   } catch {
     return 0; // vault unreadable — keep the last known balance rather than blanking it
   }
-  if (acct.onChainSeen === undefined) {
-    // First sight of this account: adopt the on-chain balance as the starting point.
-    acct.onChainSeen = onChain;
-    if (acct.balance === 0 && onChain > 0) acct.balance = onChain;
-    persist();
-    return acct.balance;
-  }
-  const delta = onChain - acct.onChainSeen;
-  if (delta === 0) return 0;
-  acct.onChainSeen = onChain;
-  acct.balance += delta;
+  const before = acct.balance;
+  acct.balance = Math.max(0, onChain + (acct.pnlCum ?? 0));
+  if (acct.balance === before) return 0;
   persist();
-  return delta;
+  return acct.balance - before;
 }
 
 app.get("/account/:address", async (c) => {
@@ -673,11 +668,16 @@ app.post("/disclose", async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const orderId = String(body.orderId || "");
   const audience = String(body.audience || "auditor");
-  const owner = getState().orders.find((o) => o.id === orderId)?.address;
+  // A position opened through the sealed path is owned by a SealedOrder, so look
+  // there too — otherwise the ownership check silently passes for sealed orders.
+  const st0 = getState();
+  const owner =
+    st0.orders.find((o) => o.id === orderId)?.address ??
+    st0.sealedOrders.find((o) => o.id === orderId)?.address;
   const authErr = checkAuth("disclose", { orderId, audience }, body, owner);
   if (authErr) return bad(c, authErr, 401);
   try {
-    const disclosure = buildDisclosure(orderId, audience);
+    const disclosure = await buildDisclosure(orderId, audience);
     if (owner) logEvent({ type: "disclose", address: owner, marketId: disclosure.revealed.pairId, detail: `Disclosed position to "${audience}" — verifiable against the on-chain commitment, still private to the public` });
     return c.json({ success: true, disclosure });
   } catch (e) {

@@ -334,8 +334,13 @@ export function closePosition(
   const fundingPortion = pos.fundingPaid * f;
 
   const acct = account(pos.address);
+  const settled = settledDeltaOf(pnl, fee, fundingPortion);
   acct.locked = Math.max(0, acct.locked - marginRelease);
-  acct.balance = Math.max(0, acct.balance + settledDeltaOf(pnl, fee, fundingPortion));
+  acct.balance = Math.max(0, acct.balance + settled);
+  // Track realized PnL separately from collateral: the vault is the source of
+  // truth for deposits/withdrawals, so the tradable balance is re-derived as
+  // (on-chain vault balance + pnlCum) on every reconciliation.
+  acct.pnlCum = (acct.pnlCum ?? 0) + settled;
   st.insuranceFundUsd += fee;
   pos.realizedPnlCum = (pos.realizedPnlCum ?? 0) + (pnl - fee);
 

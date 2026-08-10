@@ -135,3 +135,36 @@ test("SEALED E2E — an order sealed to a FUTURE round stays sealed (operator ca
   expect((await j(await get(`/orders/sealed/${A}`))).orders[0].status).toBe("sealed"); // still sealed
   expect((await j(await get(`/account/${A}`))).locked).toBeCloseTo(750, 2); // margin still held
 }, 30_000);
+
+test("SEALED E2E — a cleared sealed order is selectively disclosable and verifies", async () => {
+  await post("/demo/reset");
+  await post("/demo/seed", { address: A, dusd: 50_000 });
+  pyth._setPriceForTest(markets.marketById(FLR)!.feedId, 0.15);
+  vamm.seedPool(markets.marketById(FLR)!, 0.15);
+
+  const pastRound = await roundForTime(Date.now() - 60_000);
+  const order = mk("LONG", 20_000, 3000);
+  const sealed = await sealAndSubmit(A, order, pastRound, 3500);
+  expect(sealed.success).toBe(true);
+
+  const settled = await j(await post("/batch/settle", { marketId: FLR }));
+  expect(settled.cleared).toBe(1);
+
+  // The operator kept only ciphertext — the disclosure re-opens it, so a
+  // position from the SEALED path is disclosable just like a plaintext order.
+  const d = await j(await post("/disclose", { orderId: sealed.id, audience: "regulator" }));
+  expect(d.success).toBe(true);
+  expect(d.disclosure.revealed.side).toBe("LONG");
+  expect(d.disclosure.revealed.pairId).toBe(FLR);
+  expect(d.disclosure.commitment).toBe(sealed.commitment);
+
+  // and anyone handed it can check it against the commitment
+  const v = await j(await post("/disclose/verify", { disclosure: d.disclosure }));
+  expect(v.valid).toBe(true);
+  expect(v.matches).toBe(true);
+
+  // a tampered disclosure must NOT verify against the same commitment
+  const forged = { ...d.disclosure, revealed: { ...d.disclosure.revealed, size: "999999.00000000" } };
+  const bad = await j(await post("/disclose/verify", { disclosure: forged }));
+  expect(bad.valid).toBe(false);
+}, 40_000);

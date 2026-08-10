@@ -4,7 +4,7 @@ Four questions matter: **can the public see my order?** (no), **can the *operato
 
 ## 1. Privacy — the public can't see your order
 
-Every order is a commitment on Midnight:
+Every order is published only as a commitment:
 
 ```
 commitment = SHA-256(pairId, side, price, size, leverage, margin, nonce)
@@ -32,53 +32,63 @@ Hiding an order from the public still leaves the operator (the matching engine) 
 client:   ciphertext = timelockEncrypt(order, drandRound R)   // tlock-js, IBE over BLS12-381
 operator: stores { ciphertext, commitment } — CANNOT decrypt until R's beacon exists
 at round R (after the batch freezes): decrypt → verify commitment → clear the epoch
-          at ONE uniform price → open positions → anchor the batch membership on Cardano L1
+          at ONE uniform price → open positions → settle the batch on Flare
 ```
 
 - **Operator-blind** — the operator holds only ciphertext until drand (the **League of Entropy**, a live 12-of-22 threshold network) publishes round `R`'s beacon, which is *after* the batch is frozen. It never sees your order in time to trade ahead of it. *Verified live: the operator's decrypt is refused (`"too early — decryptable at round N"`).*
 - **No ordering edge** — the whole epoch clears at one uniform price, so a bot that inserts itself pays the same price ($0 profit) even if it *could* see the order.
-- **Censorship evidence** — the exact sealed-batch membership root is anchored on **Cardano L1** at settlement (real preprod tx, live-verified `742dc0a9…`), so the operator can't fabricate, hide, or reorder the set.
+- **Censorship evidence** — the exact sealed-batch membership root is recorded on **Flare** at settlement by `DorrBatchSettlement.settleBatch` (live-verified on Coston2: [`0xc3a1c184…`](https://coston2-explorer.flare.network/tx/0xc3a1c184d35ccb1799425df0)), so the operator can't fabricate, hide, or reorder the set. The same call is gated by the contract's own FTSO re-read and the enclave quote — see §2d.
 
 Proven by `test/sealbid.test.ts` + `test/sealed-e2e.test.ts` (8 tests against the **live** drand network): operator-blind, round-trip, uniform clearing, commitment binding, sealed→position, tamper-drop-and-refund, future-round-stays-sealed. Driveable from the UI ("Seal from the operator" switch) — the browser does the encryption, so the operator never receives plaintext.
 
-**Residual trust here:** drand's threshold (external/decentralized, not the operator) and operator **liveness/censorship** (evidence via the L1 anchor, not prevention). The clearing math is **auditable, not yet ZK-proven**.
+**Residual trust here:** drand's threshold (external/decentralized, not the operator) and operator **liveness/censorship** (evidence via the on-chain membership root, not prevention). The clearing math is **auditable, not yet ZK-proven**.
 
 ## 2c. Non-custodial vault — the operator can't seize your collateral
 
-A trusted-operator v1 usually means the operator custodies your funds. dorr ships a **non-custodial vault** (`packages/contracts-aiken/dorr-vault/validators/owner_vault.ak`) where a deposit can be spent **only by the depositor** (the `owner` pkh in its inline datum):
+A trusted-operator v1 usually means the operator custodies your funds. dorr ships a **non-custodial vault** (`contracts/src/DorrVault.sol`) holding real FXRP on Flare, where FXRP leaves **only** via the depositor's own `withdraw()`:
 
-```aiken
-validator owner_vault {
-  spend(datum, _r, _utxo, self) {
-    expect Some(OwnerDatum { owner }) = datum
-    list.has(self.extra_signatories, owner)   // ONLY the owner can move it
-  }
+```solidity
+function withdraw(uint256 amount) external {
+    Account storage a = _accounts[msg.sender];      // msg.sender — never a third party
+    if (amount > a.balance - a.locked) revert InsufficientFree();
+    a.balance -= amount;
+    fxrp.safeTransfer(msg.sender, amount);          // paid to the caller, always
 }
 ```
 
-**Live-proven on Cardano preprod** (`services/operator/src/scripts/noncustodial-proof.ts`):
-- user deposits 1,000 dUSD → non-custodial vault: [`b675b375…`](https://preprod.cardanoscan.io/transaction/b675b375dd8f0bd35b2759f20f222cca2f5c8825c745a67e13e3fd68255f1fb3)
-- **the operator tries to withdraw it → the validator REJECTS the spend** (`failed script execution Spend[1]`) — it *cannot* take user funds;
-- the user reclaims with their **own** key, operator uninvolved: [`81ecf30f…`](https://preprod.cardanoscan.io/transaction/81ecf30f57d2e333317e546406344ff53297b2f95582ec74a5a92e0deeef8f5c)
+The settlement contract can only `lockMargin` / `releaseMargin` / `applyPnl` — and `applyPnl` reverts unless the deltas sum to zero, so settlement can move value *between* traders but can never drain the vault. There is no admin path, no pause, no operator withdrawal.
 
-So collateral is **self-custodied**: even if the operator vanishes or turns malicious, your deposit is reclaimable with your key. **Remaining step:** make this the *default* margin vault, which requires the on-chain settlement validator (below) so margin backing an *open* position can't be pulled — non-custodial custody and on-chain settlement are coupled.
+**Proven by `contracts/test/DorrVault.t.sol`** (9 tests + a fuzz run over arbitrary deposit/lock/withdraw triples): `test_NoOneElseCanTakeYourCollateral`, `test_SettlementCannotDrainVault`, `test_PnlMustBeZeroSum`, `test_OnlySettlementCanLockMargin`, `testFuzz_WithdrawNeverExceedsFree`. Live-exercised on Coston2: deposit ([`0x1d716fc5…`](https://coston2-explorer.flare.network/tx/0x1d716fc540915da12051700e4a74b74160804b8bf45d60ab2f0b99149b910b71)) and depositor-signed withdrawal ([`0x32d2aad1…`](https://coston2-explorer.flare.network/tx/0x32d2aad1f82f3b1ea3791a397f40cdd78de04aefbdab88351c134473baa98bd2)), both from the browser with the operator uninvolved.
+
+So collateral is **self-custodied**: even if the operator vanishes or turns malicious, your deposit is reclaimable with your key.
+
+### ⚠️ Known gap: open-position margin is not locked on-chain
+
+The vault supports `lockMargin`, but **the operator does not call it** — margin backing an open position is tracked only in the operator's off-chain ledger. On-chain, `locked` stays `0`.
+
+**Consequence:** a trader can withdraw collateral that is currently backing their own open position. The operator will then refuse further trades (its `free` is derived from the on-chain balance), but the existing position is under-backed, and since PnL is zero-sum a counterparty's profit could be unbacked.
+
+**Why it isn't fixed here:** `lockMargin` is `onlySettlement`, and `DorrBatchSettlement` exposes no passthrough — closing this needs a contract change plus a redeploy, not an operator change. It is the top item for v2, alongside on-chain liquidation.
 
 ## 3. Auth — only you can place your trade
 
-Every value-moving action (`commit` / `execute` / `close` / `withdraw`) is bound to a **CIP-30 wallet signature**:
+Every value-moving action (`commit` / `execute` / `close` / `withdraw`) is bound to an **EIP-191 wallet signature**:
 
 ```
 message = "dorr:<action>\n" + JSON(params, keys sorted) + "\nts:<ms>"
-client:  sig = wallet.signData( hex(message) )        // Lace/Eternl/…
-server:  verifyDataSignature(sig, key, message, addr) // cardano-verify-datasignature
+client:  sig = wallet.signMessage(message)            // EIP-191 personal_sign, MetaMask/Rabby/…
+server:  recover(message, sig) === claimedSigner      // secp256k1 recovery, no public key sent
 ```
 
-The operator checks, in order: **freshness** (±120s replay window), **no-reuse** (signature dedupe), **signer == acting address**, and the **cryptographic signature** itself. A throwing/garbage signature is treated as rejection, never a crash.
+The operator checks, in order: **freshness** (±120s replay window), **no-reuse** (signature dedupe), **signer == acting address**, and the **cryptographic signature** itself — the signer is *recovered* from the signature, so a caller cannot act for an account whose key they don't hold. A throwing/garbage signature is treated as rejection, never a crash.
 
-**Proven end-to-end** in `test/auth-crypto.test.ts` using a *real* CIP-8 signer (bip32ed25519 + COSE + typhon address):
-- ✅ a genuine signature is accepted by the production verifier
+**Proven end-to-end** in `test/auth-crypto.test.ts` against the production verifier with real EVM keys:
+- ✅ a genuine signature is accepted
 - ❌ tampered params (e.g. inflated margin) are rejected
 - ❌ a signature from wallet A can't authorize an action for address B
+- ❌ a malformed signature is rejected rather than throwing
+
+Also verified against a running operator with `DORR_AUTH=1`: signed → accepted, unsigned → `401 missing auth`, forged → `401 invalid signature for this message/address`.
 
 Enable enforcement with `DORR_AUTH=1` (the web signs automatically when a wallet is connected). Default is off so the wallet-less demo and E2E run out of the box.
 
@@ -89,29 +99,34 @@ Enable enforcement with `DORR_AUTH=1` (the web signs automatically when a wallet
 | Mempool/MEV front-running (public) | **mitigated** | order is a hash until execution |
 | **Operator** seeing / front-running your order | **mitigated** (sealed orders) | drand timelock — operator holds ciphertext, can't decrypt until the batch is frozen |
 | Ordering advantage within a batch | **mitigated** | uniform-price batch clearing — a sandwich nets $0 |
-| Operator fabricating/hiding batch membership | **mitigated** (evidence) | exact sealed-batch root anchored on Cardano L1 |
-| Order-detail leakage on-chain | **mitigated** | only commitment + anchor digest ever hit chain |
-| Placing/closing someone else's trade | **mitigated** | wallet-signature auth bound to address |
+| Operator fabricating/hiding batch membership | **mitigated** (evidence) | exact sealed-batch root recorded on Flare by `settleBatch` |
+| Operator settling at an off-market price | **mitigated** (enforced on-chain) | `DorrBatchSettlement` re-reads FTSO v2 itself and reverts `PriceOutOfBand` beyond `maxDriftBps` — observed rejecting a real batch |
+| Forged enclave quote | **mitigated** (enforced on-chain) | attestation is bound to `keccak256(epochId, membershipRoot, clearingPrice, orderCount)`; a quote for another payload fails |
+| Order-detail leakage on-chain | **mitigated** | only commitment + membership root ever hit chain |
+| Placing/closing someone else's trade | **mitigated** | EIP-191 auth bound to the recovered address |
 | Signature replay | **mitigated** | freshness window + dedupe |
 | Commitment preimage recovery | **mitigated** | 128-bit nonce, SHA-256 |
-| Operator seizing user collateral | **mitigated** (non-custodial vault) | `owner_vault` — only the depositor can spend; live-proven: the operator's withdrawal attempt is **rejected on-chain** |
-| Clearing/PnL correctness on-chain | **not enforced** (v1) | clearing is auditable + membership-anchored, not yet ZK-proven |
+| Operator seizing user collateral | **mitigated** (non-custodial vault) | `DorrVault.withdraw()` pays `msg.sender` only; settlement is zero-sum and cannot drain reserves |
+| **Withdrawing margin that backs an open position** | **NOT mitigated** (v1) | on-chain `locked` is never set — see the known gap in §2c |
+| Clearing/PnL correctness on-chain | **partly enforced** | price band + attestation + zero-sum PnL are enforced by the contract; the uniform-price computation itself is auditable, not ZK-proven |
 | Operator liveness / censorship | **trusted** (v1) | anchored membership gives evidence, not prevention |
 
 ## Honest scope
 
-dorr's guarantee **today** is: *neither the public **nor the operator** can see or front-run a sealed order, the whole epoch clears at one uniform price, a self-custodial vault means the operator **can't seize your collateral**, and the batch membership + settlement leave an auditable Cardano L1 trail.* What remains **trusted** (so it's **not yet fully trustless**):
+dorr's guarantee **today** is: *neither the public **nor the operator** can see or front-run a sealed order, the whole epoch clears at one uniform price, a self-custodial vault means the operator **can't seize your collateral**, and the batch's membership and price are recorded on Flare by a contract that independently re-reads FTSO before it will accept them.* What remains **trusted** (so it's **not yet fully trustless**):
 
-- the operator is trusted for **liveness/censorship** (the L1 membership anchor makes censorship *detectable*, not impossible) and, in the **default trading path**, still manages the margin vault (the non-custodial `owner_vault` is built + on-chain-proven, but making it the default is coupled to on-chain settlement — see below);
-- the **clearing/PnL math is auditable but not yet ZK-proven** — the operator computes it off-chain (the Midnight ZK legs attest the pipeline: order authority, match, settlement transition).
+- the operator is trusted for **liveness/censorship** — the on-chain membership root makes censorship *detectable*, not impossible;
+- **margin backing an open position is not locked on-chain** (§2c) — the operator's ledger tracks it, the vault does not enforce it;
+- the **uniform-price computation is auditable but not ZK-proven** — the operator computes it off-chain; the chain checks the *result* is within FTSO band and carries a valid enclave quote, not that the auction rule was applied correctly;
+- **liquidation is off-chain** — the keeper closes positions; nothing on-chain forces it.
 
-**Pitch it as "private order flow the operator itself can't front-run (drand-sealed), uniform-price clearing, auditable L1 trail — trusted-operator v1 for custody + clearing-correctness." That's exactly true. Don't claim "fully trustless" or "the ZK proves the trade math."**
+**Pitch it as "private order flow the operator itself can't front-run (drand-sealed), uniform-price clearing, and a settlement contract that rejects an off-market price — trusted-operator v1 for clearing-correctness and liveness." That's exactly true. Don't claim "fully trustless."**
 
 ### The path to fully trustless (v2)
-1. **On-chain price** — Pyth Lazer is live on Cardano (Aiken pull-oracle); feed it into a validator.
-2. **On-chain settlement/liquidation** — an Aiken validator that enforces margin, PnL, and liquidation against that price, so the vault releases funds *trustlessly* (removes custody trust).
-3. **ZK-proven clearing** — a fixed-N Compact `zkperps-batch` circuit that proves the disclosed clearing price + net flow are the correct output of the uniform-price rule over the committed orders (removes clearing-correctness trust). ✅ **Operator-blindness (item was "user-held keys") is already done** via the drand sealed-bid — the operator never sees a sealed order's plaintext.
+1. **Lock margin on-chain** — a settlement-authorised `lockMargin` call at position open, so collateral backing an open position can't be withdrawn. This is the gap in §2c and the first thing to fix.
+2. **On-chain liquidation** — enforce margin and liquidation against the FTSO price the settlement contract already reads, so the vault releases funds without trusting a keeper.
+3. **ZK-proven clearing** — prove the disclosed clearing price and net flow are the correct output of the uniform-price rule over the committed order set, removing clearing-correctness trust. ✅ **Operator-blindness is already done** via the drand sealed-bid — the operator never sees a sealed order's plaintext.
 
 ## Not-secrets, by design
-- The **market** you trade and the **timing** of your commit are public (they're on-chain anyway). Only side/size/price/leverage/identity are hidden.
-- dUSD is a **mock testnet** stablecoin (operator-mintable) — it's collateral for the demo, not a real asset.
+- The **market** you trade and the **timing** of your commit are public. Only side/size/price/leverage/identity are hidden.
+- FXRP on Coston2 is a **testnet asset**. dorr holds no minting authority over it — test collateral comes from [Flare's faucet](https://faucet.flare.network/coston2), not from the operator.

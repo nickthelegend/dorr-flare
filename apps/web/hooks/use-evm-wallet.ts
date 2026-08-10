@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { createWalletClient, custom, type Address, type WalletClient } from "viem";
 import { defineChain } from "viem";
 
@@ -37,6 +37,35 @@ function provider(): Eip1193 | null {
   return (window as unknown as { ethereum?: Eip1193 }).ethereum ?? null;
 }
 
+/**
+ * One wallet, one piece of state.
+ *
+ * The navbar, the order ticket, the positions table and the collateral panel
+ * all ask for the wallet. If each `useEvmWallet()` kept its own `useState`,
+ * connecting in the navbar would leave every other panel believing no wallet
+ * was connected — they'd only ever agree if the provider happened to broadcast
+ * `accountsChanged` to every listener. So the account lives in a module-level
+ * store that every instance subscribes to.
+ */
+type WalletState = { address: Address | undefined; chainId: number | undefined };
+let walletState: WalletState = { address: undefined, chainId: undefined };
+const subscribers = new Set<() => void>();
+
+function setWalletState(next: Partial<WalletState>): void {
+  const merged = { ...walletState, ...next };
+  if (merged.address === walletState.address && merged.chainId === walletState.chainId) return;
+  walletState = merged;
+  subscribers.forEach((fn) => fn());
+}
+
+function subscribeWallet(fn: () => void): () => void {
+  subscribers.add(fn);
+  return () => subscribers.delete(fn);
+}
+
+const getWalletSnapshot = () => walletState;
+const getWalletServerSnapshot = (): WalletState => ({ address: undefined, chainId: undefined });
+
 export interface EvmWallet {
   available: boolean;
   connecting: boolean;
@@ -52,12 +81,43 @@ export interface EvmWallet {
 }
 
 export function useEvmWallet(): EvmWallet {
-  const [address, setAddress] = useState<Address | undefined>();
-  const [chainId, setChainId] = useState<number | undefined>();
+  const { address, chainId } = useSyncExternalStore(
+    subscribeWallet,
+    getWalletSnapshot,
+    getWalletServerSnapshot,
+  );
+  const setAddress = (a: Address | undefined) => setWalletState({ address: a });
+  const setChainId = (c: number | undefined) => setWalletState({ chainId: c });
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const available = typeof window !== "undefined" && !!provider();
+  /**
+   * Whether an injected wallet exists.
+   *
+   * Not a render-time read: extensions can inject `window.ethereum` after
+   * hydration (Brave, Rabby, mobile in-app browsers, or simply a user who
+   * unlocks after the page loads). Deciding "no wallet" on first paint would
+   * strand those users on an error toast until they reloaded, so keep looking
+   * until one appears.
+   */
+  const [available, setAvailable] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const check = () => {
+      const found = !!provider();
+      setAvailable(found);
+      return found;
+    };
+    if (check()) return;
+    window.addEventListener("ethereum#initialized", check);
+    const poll = setInterval(() => {
+      if (check()) clearInterval(poll);
+    }, 1000);
+    return () => {
+      window.removeEventListener("ethereum#initialized", check);
+      clearInterval(poll);
+    };
+  }, []);
 
   const readChain = useCallback(async () => {
     const p = provider();
