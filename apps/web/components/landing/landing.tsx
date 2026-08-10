@@ -103,7 +103,7 @@ export function Landing() {
       };
 
   return (
-    <div className="landing-root relative min-h-screen overflow-x-hidden bg-[#0c0c0c] text-white">
+    <div className="landing-root relative min-h-screen bg-[#0c0c0c] text-white">
       {/* ── ambient backdrop ── */}
       <div className="fixed inset-0 z-0 pointer-events-none">
         <video
@@ -117,9 +117,6 @@ export function Landing() {
         />
         <div className="absolute inset-0 bg-gradient-to-b from-[#0c0c0c]/70 via-[#0c0c0c]/85 to-[#0c0c0c]" />
       </div>
-
-      <div className="hidden lg:block pointer-events-none fixed inset-y-0 left-1/2 -translate-x-[calc(50%+36rem)] w-px bg-white/[0.07] z-[5]" />
-      <div className="hidden lg:block pointer-events-none fixed inset-y-0 left-1/2 translate-x-[calc(-50%+36rem)] w-px bg-white/[0.07] z-[5]" />
 
       <svg className="absolute w-0 h-0" aria-hidden>
         <filter id="c3-noise">

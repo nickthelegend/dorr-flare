@@ -307,3 +307,8 @@
 @keyframes reveal {
   to { opacity: 1; transform: none; }
 }
+
+/* Contain stray horizontal overflow at the document level. `clip` does this
+   without creating a scroll container — `hidden` would force overflow-y to
+   `auto` on the element and steal the wheel from the page. */
+html { overflow-x: clip; }
