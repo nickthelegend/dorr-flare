@@ -195,16 +195,31 @@ const BLOCKS_PER_MIN = 33;
  *
  * Returns oldest-first samples. Callers fold these into candles.
  */
+/** Retry a public-RPC read a few times with backoff — the public endpoint
+ *  intermittently refuses connections under a sustained archive walk. */
+async function withRetry<T>(fn: () => Promise<T>, tries = 4): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < tries; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      await new Promise((r) => setTimeout(r, 400 * 2 ** i));
+    }
+  }
+  throw lastErr;
+}
+
 export async function readFeedHistory(
   feedId: string,
   minutes: number,
-  concurrency = 8,
+  concurrency = 6,
   samplesPerMinute = 1,
 ): Promise<Array<{ atMs: number; price: number }>> {
-  const ftso = await resolveFtsoAddress();
+  const ftso = await withRetry(() => resolveFtsoAddress());
   const pc = publicClient();
-  const head = await pc.getBlockNumber();
-  const headBlock = await pc.getBlock({ blockNumber: head });
+  const head = await withRetry(() => pc.getBlockNumber());
+  const headBlock = await withRetry(() => pc.getBlock({ blockNumber: head }));
   const headMs = Number(headBlock.timestamp) * 1000;
 
   // Several samples per minute, walking backwards from the head block. One
@@ -242,6 +257,8 @@ export async function readFeedHistory(
       }),
     );
     for (const r of rows) if (r) out.push(r);
+    // Breathe between chunks; a tight loop is what tips the public RPC over.
+    await new Promise((r) => setTimeout(r, 120));
   }
   return out;
 }

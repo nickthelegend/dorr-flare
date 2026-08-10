@@ -185,11 +185,25 @@ export default function TradingChart() {
 
     let cancelled = false;
     const ctrl = new AbortController();
-    (async () => {
+    // The operator reconstructs a market's history from chain the first time it
+    // is asked for, so an early request can land while that is still running and
+    // come back with only the live minutes. Poll until it is actually deep
+    // enough, otherwise whoever switched markets first is stuck looking at a
+    // ten-minute chart until they reload.
+    const WANT_BARS = Math.min(60, Math.floor(backfillWindowSec(bucketSec) / bucketSec / 2));
+    let attempt = 0;
+
+    const load = async (): Promise<void> => {
       try {
         const history = await fetchBackfill(selectedMarketId, bucketSec, ctrl.signal);
-        if (cancelled || history.length === 0) return;
-        backfilledRef.current.add(key); // mark done only once history is in hand
+        if (cancelled) return;
+        if (history.length < WANT_BARS && attempt < 20) {
+          attempt++;
+          setTimeout(() => void load(), 2_000); // still filling — check again
+          if (history.length === 0) return;
+        } else {
+          backfilledRef.current.add(key); // deep enough; stop asking
+        }
         const existing = candlesRef.current.get(key) ?? [];
         // Merge: keep any live candles that are newer than the last history bar.
         const lastHist = history[history.length - 1].time;
@@ -202,7 +216,8 @@ export default function TradingChart() {
       } catch {
         // network/CORS/abort → key stays unmarked so the next run retries.
       }
-    })();
+    };
+    void load();
 
     return () => {
       cancelled = true;

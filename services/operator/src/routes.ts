@@ -118,11 +118,29 @@ export function ensureHistory(marketId: string, feedId: string, minutes = 360): 
  * market is already filled; the rest land within a minute.
  */
 export function warmChartHistory(): void {
-  // Only the market the terminal opens on. The rest reconstruct lazily the first
-  // time someone selects them — the public RPC will not sustain six concurrent
-  // archive walks, and warming all of them up front just gets us rate-limited.
-  const first = MARKETS[0];
-  if (first) void ensureHistory(first.id, first.feedId).catch(() => {});
+  // Every market, but strictly one at a time. Six concurrent archive walks get
+  // the public RPC to start refusing connections; sequentially it is steady and
+  // the whole set lands in a few minutes. Lazily filling only on first view is
+  // not enough — switching markets would show a ten-minute chart until the walk
+  // caught up, which is exactly the moment someone is deciding whether to trade.
+  void (async () => {
+    // Several passes: the public RPC refuses connections often enough that one
+    // sweep reliably leaves a market or two short, and a market with no history
+    // is the thing someone sees the moment they switch to it.
+    for (let pass = 1; pass <= 3; pass++) {
+      const short: string[] = [];
+      for (const m of MARKETS) {
+        await ensureHistory(m.id, m.feedId).catch(() => {});
+        if ((getState().candles[m.id]?.length ?? 0) < 120) short.push(m.id);
+      }
+      if (short.length === 0) {
+        console.log("[chart] all markets have reconstructed FTSO history");
+        return;
+      }
+      console.log(`[chart] pass ${pass}: still short — ${short.join(", ")}`);
+      await new Promise((r) => setTimeout(r, 5_000));
+    }
+  })();
 }
 
 /**
