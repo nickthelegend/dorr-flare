@@ -36,7 +36,7 @@ beforeAll(async () => {
   loadState();
   // Deterministic prices + seeded pools for every market (offline).
   for (const m of markets.MARKETS) {
-    const price = m.base === "BTC" ? 60000 : m.base === "ETH" ? 1600 : m.base === "SOL" ? 78 : m.base === "ADA" ? 0.15 : 0.07;
+    const price = m.base === "BTC" ? 60000 : m.base === "ETH" ? 1600 : m.base === "SOL" ? 78 : m.base === "FLR" ? 0.15 : 0.07;
     pyth._setPriceForTest(m.feedId, price);
     vamm.seedPool(m, price);
   }
@@ -51,7 +51,7 @@ test("private trade lifecycle: commit → execute → close, fully wired", async
 
   // COMMIT (private)
   const commit = await j(await post("/orders/commit", {
-    address: USER, marketId: "ADA-dUSD", side: "LONG", marginUsd: 1_000, leverage: 5, privacyMode: "private",
+    address: USER, marketId: "FLR-USD", side: "LONG", marginUsd: 1_000, leverage: 5, privacyMode: "private",
   }));
   expect(commit.success).toBe(true);
   expect(commit.commitmentHash).toMatch(/^[0-9a-f]{64}$/);
@@ -112,7 +112,7 @@ test("public order leaks (the A/B foil), proving the toggle matters", async () =
   await post("/demo/reset");
   await post("/demo/seed", { address: USER, dusd: 50_000 });
   await post("/orders/commit", {
-    address: USER, marketId: "SOL-dUSD", side: "SHORT", marginUsd: 500, leverage: 3, privacyMode: "public",
+    address: USER, marketId: "SOL-USD", side: "SHORT", marginUsd: 500, leverage: 3, privacyMode: "public",
   });
   const feed = await j(await get("/feed"));
   expect(feed.feed[0].privacyMode).toBe("public");
@@ -124,24 +124,24 @@ test("rejects insufficient margin", async () => {
   await post("/demo/reset");
   await post("/demo/seed", { address: USER, dusd: 100 });
   const r = await post("/orders/commit", {
-    address: USER, marketId: "ADA-dUSD", side: "LONG", marginUsd: 1_000, leverage: 5, privacyMode: "private",
+    address: USER, marketId: "FLR-USD", side: "LONG", marginUsd: 1_000, leverage: 5, privacyMode: "private",
   });
   expect(r.status).toBe(400);
   expect((await j(r)).error).toContain("insufficient");
 });
 
 test("A/B demo endpoint quantifies the sandwich", async () => {
-  const ab = await j(await post("/demo/ab", { marketId: "ADA-dUSD", side: "LONG", marginUsd: 1000, leverage: 10 }));
+  const ab = await j(await post("/demo/ab", { marketId: "FLR-USD", side: "LONG", marginUsd: 1000, leverage: 10 }));
   expect(ab.public.victimEntry).toBeGreaterThan(ab.private.victimEntry); // public fills worse
   expect(ab.public.botProfitUsd).toBeGreaterThan(0);
   expect(ab.headline).toContain("front-run");
 });
 
 test("A/B live mode runs a REAL sandwich yet restores the pool exactly", async () => {
-  const markBefore = (await j(await get("/markets"))).markets.find((m: any) => m.id === "ADA-dUSD").markPrice;
-  const ab = await j(await post("/demo/ab", { marketId: "ADA-dUSD", side: "LONG", marginUsd: 1000, leverage: 10, mode: "live" }));
+  const markBefore = (await j(await get("/markets"))).markets.find((m: any) => m.id === "FLR-USD").markPrice;
+  const ab = await j(await post("/demo/ab", { marketId: "FLR-USD", side: "LONG", marginUsd: 1000, leverage: 10, mode: "live" }));
   expect(ab.public.victimEntry).toBeGreaterThan(ab.private.victimEntry); // real bot really front-ran
   expect(ab.public.botProfitUsd).toBeGreaterThan(0);
-  const markAfter = (await j(await get("/markets"))).markets.find((m: any) => m.id === "ADA-dUSD").markPrice;
+  const markAfter = (await j(await get("/markets"))).markets.find((m: any) => m.id === "FLR-USD").markPrice;
   expect(markAfter).toBeCloseTo(markBefore, 8); // live pool restored — real traders unaffected
 });

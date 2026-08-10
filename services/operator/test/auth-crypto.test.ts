@@ -12,7 +12,7 @@ beforeEach(() => _resetAuthSeen());
 
 test("a genuine wallet signature is accepted by the production verifier", async () => {
   const signer = await makeTestSigner("00112233445566778899aabbccddeeff");
-  const params = { address: signer.address, marketId: "ADA-dUSD", side: "LONG", marginUsd: 1000, leverage: 5, privacyMode: "private" };
+  const params = { address: signer.address, marketId: "FLR-USD", side: "LONG", marginUsd: 1000, leverage: 5, privacyMode: "private" };
   const ts = 1_700_000_000_000;
   const env: AuthEnvelope = { signer: signer.address, ts, sig: signer.sign(authMessage("commit", params, ts)) };
 
@@ -22,7 +22,7 @@ test("a genuine wallet signature is accepted by the production verifier", async 
 
 test("tampering the signed params (e.g. bumping size) is rejected", async () => {
   const signer = await makeTestSigner("00112233445566778899aabbccddeeff");
-  const params = { address: signer.address, marketId: "ADA-dUSD", side: "LONG", marginUsd: 1000, leverage: 5, privacyMode: "private" };
+  const params = { address: signer.address, marketId: "FLR-USD", side: "LONG", marginUsd: 1000, leverage: 5, privacyMode: "private" };
   const ts = 1_700_000_000_000;
   const env: AuthEnvelope = { signer: signer.address, ts, sig: signer.sign(authMessage("commit", params, ts)) };
 

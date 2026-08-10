@@ -19,7 +19,7 @@ import { JobProgress } from "./job-progress";
 import { MarketIcon } from "./market-icon";
 import { DisclosureDialog } from "./disclosure";
 
-const explorerTx = (h: string) => `https://preprod.cardanoscan.io/transaction/${h}`;
+const explorerTx = (h: string) => `https://coston2-explorer.flare.network/tx/${h}`;
 
 function SideBadge({ side }: { side: Position["side"] }) {
   return (
@@ -45,7 +45,7 @@ function PnlCell({ value }: { value: number | undefined }) {
   );
 }
 
-/** Close-flow: settlement proof → cardano anchor → midnight bind, live. */
+/** Close-flow: settlement proof → Flare settlement, live. */
 function CloseJobPanel({
   jobId,
   position,
@@ -136,7 +136,7 @@ function MarginControl({
     setBusy(true);
     try {
       await operator.adjustMargin(position.id, sign * amt);
-      toast.success(sign > 0 ? `Added ${formatUsd(amt)} dUSD margin` : `Removed ${formatUsd(amt)} dUSD margin`);
+      toast.success(sign > 0 ? `Added ${formatUsd(amt)} FXRP margin` : `Removed ${formatUsd(amt)} FXRP margin`);
       setOpen(false);
       setAmount("");
       onAdjusted();
@@ -177,7 +177,7 @@ function MarginControl({
             disabled={busy}
           />
           <div className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">
-            dUSD
+            FXRP
           </div>
         </div>
         <div className="flex justify-between text-[10px] text-muted-foreground font-mono">
@@ -276,7 +276,7 @@ function StopsControl({ position, onSaved }: { position: Position; onSaved: () =
         </div>
         <div className="space-y-2">
           <div className="space-y-1">
-            <Label className="text-[10px] text-destructive">Stop-loss (dUSD)</Label>
+            <Label className="text-[10px] text-destructive">Stop-loss (FXRP)</Label>
             <Input
               placeholder="none"
               inputMode="decimal"
@@ -287,7 +287,7 @@ function StopsControl({ position, onSaved }: { position: Position; onSaved: () =
             />
           </div>
           <div className="space-y-1">
-            <Label className="text-[10px] text-success">Take-profit (dUSD)</Label>
+            <Label className="text-[10px] text-success">Take-profit (FXRP)</Label>
             <Input
               placeholder="none"
               inputMode="decimal"

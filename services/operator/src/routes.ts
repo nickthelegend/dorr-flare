@@ -110,7 +110,7 @@ app.post("/faucet", async (c) => {
   const amount = Math.min(Number(body.amount || 10_000), 100_000);
   if (!address.startsWith("addr_test1")) return bad(c, "address must be a preprod bech32 address");
   const job = createJob("faucet", address);
-  const step = jobStep(job, `mint ${amount} dUSD → ${address.slice(0, 24)}…`);
+  const step = jobStep(job, `mint ${amount} FXRP → ${address.slice(0, 24)}…`);
   try {
     const txHash = await faucetMint(address, amount);
     step.done({ txHash });
@@ -155,7 +155,7 @@ app.post("/deposits/sync", async (c) => {
   }
   persist();
   const total = credited.reduce((s, d) => s + d.dusd, 0);
-  if (total > 0) logEvent({ type: "deposit", address, detail: `Deposited ${total.toFixed(2)} dUSD to the margin vault`, chain: "cardano" });
+  if (total > 0) logEvent({ type: "deposit", address, detail: `Deposited ${total.toFixed(2)} FXRP to the margin vault`, chain: "cardano" });
   return c.json({ credited, balance: acct.balance, free: acct.balance - acct.locked });
 });
 
@@ -169,12 +169,12 @@ app.post("/withdraw", async (c) => {
   const acct = account(address);
   if (amount > acct.balance - acct.locked) return bad(c, "insufficient free balance");
   const job = createJob("withdraw", address);
-  const step = jobStep(job, `vault → ${amount} dUSD → ${address.slice(0, 24)}…`);
+  const step = jobStep(job, `vault → ${amount} FXRP → ${address.slice(0, 24)}…`);
   try {
     const txHash = await vaultWithdraw(address, amount);
     acct.balance -= amount;
     persist();
-    logEvent({ type: "withdraw", address, detail: `Withdrew ${amount.toFixed(2)} dUSD from the vault`, txHash, chain: "cardano" });
+    logEvent({ type: "withdraw", address, detail: `Withdrew ${amount.toFixed(2)} FXRP from the vault`, txHash, chain: "cardano" });
     step.done({ txHash });
     completeJob(job);
     return c.json({ success: true, txHash, jobId: job.id, balance: acct.balance });
@@ -416,7 +416,7 @@ app.post("/demo/ab", async (c) => {
   const body = await c.req.json().catch(() => ({}));
   try {
     const result = runAbDemo({
-      marketId: String(body.marketId || "ADA-dUSD"),
+      marketId: String(body.marketId || "FLR-USD"),
       side: body.side === "SHORT" ? "SHORT" : "LONG",
       marginUsd: Number(body.marginUsd || 1000),
       leverage: Number(body.leverage || 10),
@@ -435,7 +435,7 @@ app.post("/demo/attack", async (c) => {
   try {
     return c.json(
       runAttackLab({
-        marketId: String(body.marketId || "ADA-dUSD"),
+        marketId: String(body.marketId || "FLR-USD"),
         side: body.side === "SHORT" ? "SHORT" : "LONG",
         marginUsd: Number(body.marginUsd || 1000),
         leverage: Number(body.leverage || 10),
@@ -453,7 +453,7 @@ app.post("/demo/batch", async (c) => {
   try {
     return c.json(
       runBatchAuctionDemo({
-        marketId: String(body.marketId || "ADA-dUSD"),
+        marketId: String(body.marketId || "FLR-USD"),
         side: body.side === "SHORT" ? "SHORT" : "LONG",
         marginUsd: body.marginUsd != null ? Number(body.marginUsd) : undefined,
         leverage: body.leverage != null ? Number(body.leverage) : undefined,
@@ -468,7 +468,7 @@ app.post("/demo/batch", async (c) => {
 // how the currently-resting (committed) MARKET orders for a market would clear
 // as one uniform-price epoch — real state, read-only.
 app.get("/batch/preview", (c) => {
-  const marketId = c.req.query("marketId") || "ADA-dUSD";
+  const marketId = c.req.query("marketId") || "FLR-USD";
   const pool = vamm.snapshot(marketId);
   if (!pool) return bad(c, `market ${marketId} not ready`);
   const orders = getState()
@@ -494,7 +494,7 @@ app.post("/demo/sealed", async (c) => {
   try {
     return c.json(
       await runSealedDemo({
-        marketId: String(body.marketId || "ADA-dUSD"),
+        marketId: String(body.marketId || "FLR-USD"),
         side: body.side === "SHORT" ? "SHORT" : "LONG",
         marginUsd: body.marginUsd != null ? Number(body.marginUsd) : undefined,
         leverage: body.leverage != null ? Number(body.leverage) : undefined,
@@ -529,7 +529,7 @@ app.post("/orders/seal", async (c) => {
 // settle a market's sealed epoch — decrypt (round permitting), clear at one price, open positions
 app.post("/batch/settle", async (c) => {
   const body = await c.req.json().catch(() => ({}));
-  const marketId = String(body.marketId || "ADA-dUSD");
+  const marketId = String(body.marketId || "FLR-USD");
   try {
     return c.json({ success: true, ...(await settleSealedBatch(marketId)) });
   } catch (e) {
@@ -720,7 +720,7 @@ app.get("/ops/balances", async (c) => {
 
 /**
  * Proof of solvency — the operator attests that the on-chain margin vault holds
- * at least the sum of every credited dUSD balance (what users could withdraw).
+ * at least the sum of every credited FXRP balance (what users could withdraw).
  * Reserves are read live from the vault script address, so anyone can recompute
  * them independently from the returned address and check the ratio.
  */
@@ -778,7 +778,7 @@ app.get("/ops/solvency", async (c) => {
       vaultUtxos: reserves.utxos,
       attestation,
       at,
-      note: "reserves are the live on-chain dUSD at vaultAddress — recompute and verify independently",
+      note: "reserves are the live on-chain FXRP at vaultAddress — recompute and verify independently",
     });
   } catch (e) {
     return bad(c, `solvency check failed: ${String(e).slice(0, 200)}`, 500);

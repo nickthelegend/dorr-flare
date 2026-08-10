@@ -21,9 +21,9 @@ function StepTimer({ running }: { running: boolean }) {
 }
 
 function txExplorerUrl(txHash: string): string | null {
-  // 64-hex hashes → assume cardano preprod; midnight tx ids get no link.
+  // 64-hex hashes → Flare Coston2 explorer.
   if (/^[0-9a-f]{64}$/i.test(txHash)) {
-    return `https://preprod.cardanoscan.io/transaction/${txHash}`;
+    return `https://coston2-explorer.flare.network/tx/${txHash}`;
   }
   return null;
 }

@@ -24,7 +24,7 @@ function RestingRow({ order, address }: { order: RestingOrder; address?: string 
     try {
       await operator.cancelOrder(order.id);
       toast.success("Order cancelled", {
-        description: `${formatUsd(order.marginUsd)} dUSD margin released`,
+        description: `${formatUsd(order.marginUsd)} FXRP margin released`,
       });
       invalidate(address);
     } catch (e: any) {
@@ -38,7 +38,7 @@ function RestingRow({ order, address }: { order: RestingOrder; address?: string 
     setAnchoring(true);
     try {
       const res = await operator.anchorCommit(order.id);
-      toast.success("Commitment anchored on Cardano L1", {
+      toast.success("Commitment anchored on Flare", {
         description: "Existence is now publicly provable — contents still hidden.",
         action: { label: "View tx", onClick: () => window.open(res.explorerUrl, "_blank") },
       });
@@ -107,10 +107,10 @@ function RestingRow({ order, address }: { order: RestingOrder; address?: string 
           </span>
           {order.commitAnchor ? (
             <a
-              href={`https://preprod.cardanoscan.io/transaction/${order.commitAnchor.txHash}`}
+              href={`https://coston2-explorer.flare.network/tx/${order.commitAnchor.txHash}`}
               target="_blank"
               rel="noreferrer"
-              title="Commitment anchored on Cardano L1 — existence provable, contents hidden"
+              title="Commitment anchored on Flare — existence provable, contents hidden"
               className="flex items-center gap-1 rounded border border-success/40 bg-success/10 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-success hover:bg-success/20 transition-colors"
             >
               <Anchor className="w-2.5 h-2.5" /> L1 <ExternalLink className="w-2 h-2" />
@@ -119,7 +119,7 @@ function RestingRow({ order, address }: { order: RestingOrder; address?: string 
             <button
               onClick={anchorL1}
               disabled={anchoring}
-              title="Anchor this commitment on Cardano L1 — a public, timestamped proof it existed (contents stay hidden)"
+              title="Anchor this commitment on Flare — a public, timestamped proof it existed (contents stay hidden)"
               className={cn(
                 "flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-[9px] uppercase tracking-wide",
                 "text-muted-foreground hover:text-primary hover:border-primary/50 transition-colors",

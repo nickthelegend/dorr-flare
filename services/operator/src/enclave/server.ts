@@ -187,7 +187,7 @@ app.post("/orders", async (c) => {
  */
 app.post("/clear", async (c) => {
   const b = await c.req.json().catch(() => ({}));
-  const marketId = String(b.marketId || "ADA-dUSD");
+  const marketId = String(b.marketId || "FLR-USD");
   const market = marketById(marketId);
   if (!market) return c.json({ error: "unknown market" }, 400);
 

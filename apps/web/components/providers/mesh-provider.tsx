@@ -1,14 +1,17 @@
 "use client";
 
-import { MeshProvider } from "@meshsdk/react";
 import type { ReactNode } from "react";
 
 /**
- * MeshProvider pulls in @meshsdk/core WASM, which must never evaluate on the
- * server. This wrapper is only ever imported from inside the ssr:false
- * terminal boundary (components/trading/terminal.tsx), so a static import is
- * safe here and keeps wallet context available synchronously on the client.
+ * Wallet context boundary.
+ *
+ * dorr now connects an EVM wallet directly over EIP-1193 (see
+ * `hooks/use-evm-wallet.ts`), so no provider component is required. This stays
+ * as a thin pass-through so the terminal's tree shape is unchanged; it replaced
+ * a MeshProvider that pulled Cardano WASM into the client bundle.
  */
 export function CardanoProvider({ children }: { children: ReactNode }) {
-  return <MeshProvider>{children}</MeshProvider>;
+  return <>{children}</>;
 }
+
+export { CardanoProvider as WalletProvider };

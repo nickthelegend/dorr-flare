@@ -252,7 +252,7 @@ export function AttackLabBody() {
         </h2>
         <p className="text-xs text-muted-foreground flex items-center gap-1.5">
           <MarketIcon base={base} size={14} />
-          Same {formatUsd(1000, 0)} dUSD · 10x {side} on {symbol}. A front-running bot attacks it on a
+          Same {formatUsd(1000, 0)} FXRP · 10x {side} on {symbol}. A front-running bot attacks it on a
           transparent DEX, then tries the same on dorr.
         </p>
       </div>

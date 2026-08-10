@@ -22,7 +22,7 @@ import {
 const NET = 20_000; // drand network calls — generous per-test timeout
 
 function mkPreimage(side: "LONG" | "SHORT", sizeBase: number, marginUsd: number): OrderPreimage {
-  return { marketId: "ADA-dUSD", side, sizeBase, leverage: 10, marginUsd, price: 0.15, nonce: randomBytes(16).toString("hex") };
+  return { marketId: "FLR-USD", side, sizeBase, leverage: 10, marginUsd, price: 0.15, nonce: randomBytes(16).toString("hex") };
 }
 
 test("OPERATOR IS BLIND — an order sealed to a future drand round cannot be opened", async () => {
@@ -52,14 +52,14 @@ test("EPOCH CLEARS AT ONE UNIFORM PRICE — no arrival-order advantage", async (
     seals.push({
       id: `s${i}`,
       address: `addr_test1seal${i}`,
-      marketId: "ADA-dUSD",
+      marketId: "FLR-USD",
       commitment: commitmentFor(preimages[i]),
       ciphertext: await sealOrder(preimages[i], pastRound),
       targetRound: pastRound,
     });
   }
   const pool = { base: 1_000_000, quote: 150_000, k: 1_000_000 * 150_000 };
-  const s = await settleSealedEpoch("ADA-dUSD", seals, pool);
+  const s = await settleSealedEpoch("FLR-USD", seals, pool);
   expect(s.valid.length).toBe(3); // all opened + commitments verified
   expect(s.clearing).toBeDefined();
   const prices = new Set(s.clearing!.fills.map((f) => f.price));
@@ -76,14 +76,14 @@ test("COMMITMENT BINDING — a preimage that doesn't match its commitment is dro
     {
       id: "bad",
       address: "addr_test1bad",
-      marketId: "ADA-dUSD",
+      marketId: "FLR-USD",
       commitment: fakeCommitment,
       ciphertext: await sealOrder(real, pastRound),
       targetRound: pastRound,
     },
   ];
   const pool = { base: 1_000_000, quote: 150_000, k: 1_000_000 * 150_000 };
-  const s = await settleSealedEpoch("ADA-dUSD", seals, pool);
+  const s = await settleSealedEpoch("FLR-USD", seals, pool);
   expect(s.valid.length).toBe(0);
   expect(s.opened[0].reason).toContain("commitment mismatch");
 }, NET);

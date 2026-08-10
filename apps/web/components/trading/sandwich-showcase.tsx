@@ -96,7 +96,7 @@ export function AbShowcaseBody() {
             </div>
             <h2 className="text-2xl font-display leading-none">The sandwich attack, A/B tested</h2>
             <p className="text-xs text-muted-foreground">
-              Same {formatUsd(1000, 0)} dUSD · 5x {side} on {symbol}. One on a transparent DEX, one on dorr.
+              Same {formatUsd(1000, 0)} FXRP · 5x {side} on {symbol}. One on a transparent DEX, one on dorr.
             </p>
           </div>
 

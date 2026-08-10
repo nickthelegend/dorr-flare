@@ -21,8 +21,8 @@ let pyth: typeof import("../src/ftso.js");
 let vamm: typeof import("../src/vamm.js");
 let trading: typeof import("../src/trading.js");
 let markets: typeof import("../src/markets.js");
-const ADA = "ADA-dUSD";
-let adaFeed: string;
+const FLR = "FLR-USD";
+let flrFeed: string;
 
 const j = async (r: Response) => (await r.json()) as any;
 const post = (p: string, b?: unknown) =>
@@ -37,8 +37,8 @@ async function pollJob(id: string) {
   throw new Error("job stuck");
 }
 function setPrice(p: number) {
-  pyth._setPriceForTest(adaFeed, p);
-  vamm.seedPool(markets.marketById(ADA)!, p);
+  pyth._setPriceForTest(flrFeed, p);
+  vamm.seedPool(markets.marketById(FLR)!, p);
 }
 
 beforeAll(async () => {
@@ -47,7 +47,7 @@ beforeAll(async () => {
   vamm = await import("../src/vamm.js");
   trading = await import("../src/trading.js");
   await (await import("../src/state.js")).loadState();
-  adaFeed = markets.marketById(ADA)!.feedId;
+  flrFeed = markets.marketById(FLR)!.feedId;
   setPrice(0.15);
   app = (await import("../src/routes.js")).app;
 });
@@ -96,7 +96,7 @@ test("BATCH: net-short epoch clears BELOW spot", () => {
 
 test("BATCH DEMO: a sandwich nets ~$0 under uniform clearing, but profits sequentially", () => {
   setPrice(0.15);
-  const r = runBatchAuctionDemo({ marketId: ADA, side: "LONG", marginUsd: 1000, leverage: 10, botMultiple: 2 });
+  const r = runBatchAuctionDemo({ marketId: FLR, side: "LONG", marginUsd: 1000, leverage: 10, botMultiple: 2 });
   // In the batch, the bot's front-run and back-run clear at the SAME price → $0.
   expect(Math.abs(r.attack.botProfitUsd)).toBeLessThan(1e-6);
   expect(r.attack.botBuyPrice).toBeCloseTo(r.attack.botSellPrice, 10);
@@ -109,7 +109,7 @@ test("BATCH DEMO: a sandwich nets ~$0 under uniform clearing, but profits sequen
 
 test("BATCH endpoint /demo/batch returns the contrast", async () => {
   setPrice(0.15);
-  const r = await j(await post("/demo/batch", { marketId: ADA, side: "LONG", marginUsd: 1000, leverage: 10 }));
+  const r = await j(await post("/demo/batch", { marketId: FLR, side: "LONG", marginUsd: 1000, leverage: 10 }));
   expect(r.epoch.orders.length).toBeGreaterThan(1);
   expect(Math.abs(r.attack.botProfitUsd)).toBeLessThan(1e-6);
   expect(r.sequential.botProfitUsd).toBeGreaterThan(0);
@@ -131,11 +131,11 @@ test("ORACLE GUARD (wired): execute is refused when the venue mark ≠ oracle", 
   await post("/demo/seed", { address: USER, dusd: 500_000 });
   setPrice(0.15);
   const commit = await j(await post("/orders/commit", {
-    address: USER, marketId: ADA, side: "LONG", marginUsd: 1000, leverage: 5, privacyMode: "private",
+    address: USER, marketId: FLR, side: "LONG", marginUsd: 1000, leverage: 5, privacyMode: "private",
   }));
   await pollJob(commit.jobId);
   // Skew the live pool far from the oracle (simulate manipulation / stalled recenter).
-  vamm.fill(ADA, "LONG", vamm.getPool(ADA)!.virtualBase * 0.2);
+  vamm.fill(FLR, "LONG", vamm.getPool(FLR)!.virtualBase * 0.2);
   const exe = await post(`/orders/${commit.orderId}/execute`);
   expect(exe.status).toBe(400);
   expect((await j(exe)).error).toContain("divergence");
@@ -149,7 +149,7 @@ test("CANCEL: a resting order is cancellable and releases its margin", async () 
   await post("/demo/seed", { address: USER, dusd: 50_000 });
   setPrice(0.15);
   const commit = await j(await post("/orders/commit", {
-    address: USER, marketId: ADA, side: "LONG", marginUsd: 1000, leverage: 5,
+    address: USER, marketId: FLR, side: "LONG", marginUsd: 1000, leverage: 5,
     privacyMode: "private", orderType: "limit", limitPrice: 0.14,
   }));
   await pollJob(commit.jobId);
@@ -173,7 +173,7 @@ test("CANCEL: an executed order cannot be cancelled", async () => {
   await post("/demo/seed", { address: USER, dusd: 50_000 });
   setPrice(0.15);
   const commit = await j(await post("/orders/commit", {
-    address: USER, marketId: ADA, side: "LONG", marginUsd: 1000, leverage: 5, privacyMode: "private",
+    address: USER, marketId: FLR, side: "LONG", marginUsd: 1000, leverage: 5, privacyMode: "private",
   }));
   await pollJob(commit.jobId);
   const exe = await j(await post(`/orders/${commit.orderId}/execute`));
@@ -189,14 +189,14 @@ test("STATS: open interest, skew and funding surface after a trade", async () =>
   await post("/demo/seed", { address: USER, dusd: 100_000 });
   setPrice(0.15);
   const commit = await j(await post("/orders/commit", {
-    address: USER, marketId: ADA, side: "LONG", marginUsd: 2000, leverage: 5, privacyMode: "private",
+    address: USER, marketId: FLR, side: "LONG", marginUsd: 2000, leverage: 5, privacyMode: "private",
   }));
   await pollJob(commit.jobId);
   const exe = await j(await post(`/orders/${commit.orderId}/execute`));
   await pollJob(exe.jobId);
 
   const stats = await j(await get("/stats"));
-  const ada = stats.markets.find((m: any) => m.id === ADA);
+  const ada = stats.markets.find((m: any) => m.id === FLR);
   expect(ada.openPositions).toBe(1);
   expect(ada.longOiUsd).toBeGreaterThan(0);
   expect(ada.shortOiUsd).toBe(0);
@@ -211,19 +211,19 @@ test("RISK CAP: per-market open-interest cap rejects over-commitment", async () 
   await post("/demo/reset");
   await post("/demo/seed", { address: USER, dusd: 2_000_000 });
   setPrice(0.15);
-  // ADA cap is 500k notional. 90k margin × 5 = 450k notional → OK.
+  // FLR cap is 500k notional. 90k margin × 5 = 450k notional → OK.
   const a = await j(await post("/orders/commit", {
-    address: USER, marketId: ADA, side: "LONG", marginUsd: 90_000, leverage: 5, privacyMode: "private",
+    address: USER, marketId: FLR, side: "LONG", marginUsd: 90_000, leverage: 5, privacyMode: "private",
   }));
   expect(a.success).toBe(true);
   // +20k × 5 = 100k → 550k total > 500k cap → rejected.
   const b = await post("/orders/commit", {
-    address: USER, marketId: ADA, side: "LONG", marginUsd: 20_000, leverage: 5, privacyMode: "private",
+    address: USER, marketId: FLR, side: "LONG", marginUsd: 20_000, leverage: 5, privacyMode: "private",
   });
   expect(b.status).toBe(400);
   expect((await j(b)).error).toContain("open-interest cap");
   // stats expose the cap + utilization
-  const ada = (await j(await get("/stats"))).markets.find((m: any) => m.id === ADA);
+  const ada = (await j(await get("/stats"))).markets.find((m: any) => m.id === FLR);
   expect(ada.maxOiUsd).toBe(500_000);
 });
 
@@ -235,15 +235,15 @@ test("BATCH PREVIEW: resting committed orders clear at one uniform price", async
   setPrice(0.15);
   // two committed market orders, opposite sides, left un-executed (resting epoch)
   const a = await j(await post("/orders/commit", {
-    address: USER, marketId: ADA, side: "LONG", marginUsd: 3000, leverage: 4, privacyMode: "private",
+    address: USER, marketId: FLR, side: "LONG", marginUsd: 3000, leverage: 4, privacyMode: "private",
   }));
   const b = await j(await post("/orders/commit", {
-    address: USER + "2", marketId: ADA, side: "SHORT", marginUsd: 1000, leverage: 4, privacyMode: "private",
+    address: USER + "2", marketId: FLR, side: "SHORT", marginUsd: 1000, leverage: 4, privacyMode: "private",
   }));
   await pollJob(a.jobId);
   await pollJob(b.jobId);
 
-  const prev = await j(await get(`/batch/preview?marketId=${ADA}`));
+  const prev = await j(await get(`/batch/preview?marketId=${FLR}`));
   expect(prev.epochOrders).toBe(2);
   const prices = new Set(prev.clearing.fills.map((f: any) => f.price));
   expect(prices.size).toBe(1); // one uniform clearing price

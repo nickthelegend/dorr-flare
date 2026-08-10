@@ -14,8 +14,8 @@ let pyth: typeof import("../src/ftso.js");
 let vamm: typeof import("../src/vamm.js");
 let trading: typeof import("../src/trading.js");
 let markets: typeof import("../src/markets.js");
-const ADA = "ADA-dUSD";
-let adaFeed: string;
+const FLR = "FLR-USD";
+let flrFeed: string;
 
 const j = async (r: Response) => (await r.json()) as any;
 const post = (p: string, b?: unknown) =>
@@ -30,8 +30,8 @@ async function pollJob(id: string) {
   throw new Error("job stuck");
 }
 function setPrice(p: number) {
-  pyth._setPriceForTest(adaFeed, p);
-  vamm.seedPool(markets.marketById(ADA)!, p); // simulate keeper recenter to the new price
+  pyth._setPriceForTest(flrFeed, p);
+  vamm.seedPool(markets.marketById(FLR)!, p); // simulate keeper recenter to the new price
 }
 
 beforeAll(async () => {
@@ -40,7 +40,7 @@ beforeAll(async () => {
   vamm = await import("../src/vamm.js");
   trading = await import("../src/trading.js");
   await (await import("../src/state.js")).loadState();
-  adaFeed = markets.marketById(ADA)!.feedId;
+  flrFeed = markets.marketById(FLR)!.feedId;
   setPrice(0.15);
   app = (await import("../src/routes.js")).app;
 });
@@ -52,7 +52,7 @@ test("private LIMIT order rests invisibly, then triggers when price crosses", as
 
   // LONG limit to buy at 0.14 — current price 0.15, so it should NOT fill yet.
   const commit = await j(await post("/orders/commit", {
-    address: USER, marketId: ADA, side: "LONG", marginUsd: 1000, leverage: 5,
+    address: USER, marketId: FLR, side: "LONG", marginUsd: 1000, leverage: 5,
     privacyMode: "private", orderType: "limit", limitPrice: 0.14,
   }));
   expect(commit.success).toBe(true);
@@ -83,7 +83,7 @@ test("hidden STOP-LOSS closes the position when price crosses (anti stop-hunting
   await post("/demo/seed", { address: USER, dusd: 50_000 });
   setPrice(0.15);
   const commit = await j(await post("/orders/commit", {
-    address: USER, marketId: ADA, side: "LONG", marginUsd: 1000, leverage: 5, privacyMode: "private",
+    address: USER, marketId: FLR, side: "LONG", marginUsd: 1000, leverage: 5, privacyMode: "private",
   }));
   await pollJob(commit.jobId);
   const exe = await j(await post(`/orders/${commit.orderId}/execute`));
@@ -110,7 +110,7 @@ test("PARTIAL close halves the position and settles proportional PnL", async () 
   await post("/demo/seed", { address: USER, dusd: 50_000 });
   setPrice(0.15);
   const commit = await j(await post("/orders/commit", {
-    address: USER, marketId: ADA, side: "LONG", marginUsd: 1000, leverage: 5, privacyMode: "private",
+    address: USER, marketId: FLR, side: "LONG", marginUsd: 1000, leverage: 5, privacyMode: "private",
   }));
   await pollJob(commit.jobId);
   const exe = await j(await post(`/orders/${commit.orderId}/execute`));
@@ -130,7 +130,7 @@ test("ADD margin lowers leverage + moves liq price; over-removal is refused", as
   await post("/demo/seed", { address: USER, dusd: 50_000 });
   setPrice(0.15);
   const commit = await j(await post("/orders/commit", {
-    address: USER, marketId: ADA, side: "LONG", marginUsd: 1000, leverage: 10, privacyMode: "private",
+    address: USER, marketId: FLR, side: "LONG", marginUsd: 1000, leverage: 10, privacyMode: "private",
   }));
   await pollJob(commit.jobId);
   const exe = await j(await post(`/orders/${commit.orderId}/execute`));
@@ -151,7 +151,7 @@ test("SLIPPAGE guard rejects a fill worse than tolerance, order stays resting", 
   setPrice(0.15);
   // large (but within pool depth) size + 1bp tolerance → the fill's impact blows past it
   const commit = await j(await post("/orders/commit", {
-    address: USER, marketId: ADA, side: "LONG", marginUsd: 50_000, leverage: 5, privacyMode: "private", maxSlippageBps: 1,
+    address: USER, marketId: FLR, side: "LONG", marginUsd: 50_000, leverage: 5, privacyMode: "private", maxSlippageBps: 1,
   }));
   await pollJob(commit.jobId);
   const exe = await post(`/orders/${commit.orderId}/execute`);

@@ -93,11 +93,11 @@ export default function TradingNavbar() {
             <div className="flex items-baseline gap-2">
               <span className="text-lg sm:text-2xl font-display lowercase leading-none">dorr</span>
               <Badge variant="outline" className="hidden lg:inline-flex text-[9px] h-4 px-1.5 uppercase tracking-wider">
-                preprod
+                coston2
               </Badge>
             </div>
             <span className="hidden sm:block text-[9px] text-muted-foreground uppercase tracking-[0.2em] mt-1">
-              privacy perps · cardano + midnight
+              privacy perps · flare · fxrp
             </span>
           </div>
         </div>

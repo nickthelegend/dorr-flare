@@ -28,7 +28,7 @@ beforeAll(async () => {
   const vamm = await import("../src/vamm.js");
   await (await import("../src/state.js")).loadState();
   for (const m of markets.MARKETS) {
-    const price = m.base === "BTC" ? 60000 : m.base === "ETH" ? 1600 : m.base === "SOL" ? 78 : m.base === "ADA" ? 0.15 : 0.07;
+    const price = m.base === "BTC" ? 60000 : m.base === "ETH" ? 1600 : m.base === "SOL" ? 78 : m.base === "FLR" ? 0.15 : 0.07;
     pyth._setPriceForTest(m.feedId, price);
     vamm.seedPool(m, price);
   }
@@ -36,7 +36,7 @@ beforeAll(async () => {
 });
 
 test("MEV attack lab: sandwich SUCCEEDS on a public DEX but FAILS on dorr", async () => {
-  const r = await j(await post("/demo/attack", { marketId: "ADA-dUSD", side: "LONG", marginUsd: 1000, leverage: 10 }));
+  const r = await j(await post("/demo/attack", { marketId: "FLR-USD", side: "LONG", marginUsd: 1000, leverage: 10 }));
   // public: bot front-runs and profits
   expect(r.publicRun.outcome).toBe("SANDWICHED");
   expect(r.publicRun.botProfitUsd).toBeGreaterThan(0);
@@ -54,7 +54,7 @@ test("selective disclosure: open a hidden position to an auditor, verifiable vs 
   await post("/demo/reset");
   await post("/demo/seed", { address: USER, dusd: 50_000 });
   const commit = await j(await post("/orders/commit", {
-    address: USER, marketId: "ADA-dUSD", side: "LONG", marginUsd: 1000, leverage: 5, privacyMode: "private",
+    address: USER, marketId: "FLR-USD", side: "LONG", marginUsd: 1000, leverage: 5, privacyMode: "private",
   }));
   await pollJob(commit.jobId);
 
@@ -83,7 +83,7 @@ test("activity log records the trader's actions", async () => {
   await post("/demo/reset");
   await post("/demo/seed", { address: USER, dusd: 50_000 });
   const commit = await j(await post("/orders/commit", {
-    address: USER, marketId: "ETH-dUSD", side: "SHORT", marginUsd: 800, leverage: 3, privacyMode: "private",
+    address: USER, marketId: "ETH-USD", side: "SHORT", marginUsd: 800, leverage: 3, privacyMode: "private",
   }));
   await pollJob(commit.jobId);
   const events = (await j(await get(`/events?address=${USER}`))).events;

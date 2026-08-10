@@ -25,10 +25,10 @@ const isV0 = process.env["VERCEL_URL"]?.includes("vusercontent.net") ?? false;
 export const metadata: Metadata = {
   title: {
     template: "%s – dorr",
-    default: "dorr – private perps on Cardano",
+    default: "dorr – private perps on Flare",
   },
   description:
-    "Privacy-preserving perpetuals on Cardano + Midnight. Commit orders as ZK hashes — front-runners see nothing.",
+    "FXRP-margined perpetual futures on Flare. Orders are sealed until the batch clears — not even the operator can front-run you.",
 };
 
 export default function RootLayout({

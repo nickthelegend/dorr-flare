@@ -5,7 +5,7 @@ import { Loader2 } from "lucide-react";
 
 /**
  * The entire trading terminal loads client-side only (ssr:false): every panel
- * touches useWallet → @meshsdk/react → cardano WASM, which cannot run during
+ * touches wallet + chart code that cannot run during
  * server prerendering. The shell below keeps first paint from being blank.
  */
 const TerminalInner = dynamic(() => import("./terminal-inner"), {
@@ -15,7 +15,7 @@ const TerminalInner = dynamic(() => import("./terminal-inner"), {
       <div className="w-full border-b border-border px-4 py-4 flex items-center justify-between">
         <span className="text-xl font-display lowercase">dorr</span>
         <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
-          private perps · cardano + midnight
+          private perps · flare · fxrp
         </span>
       </div>
       <div className="flex-1 flex items-center justify-center gap-2 text-sm text-muted-foreground">

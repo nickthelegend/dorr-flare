@@ -3,8 +3,8 @@
 import { cn } from "@/lib/core";
 
 /**
- * Self-contained token brand marks for the five dorr markets. Inline SVG paths
- * (no runtime CDN, build-safe), each drawn inside a 32×32 viewBox on the brand
+ * Self-contained token brand marks for the dorr markets. Inline SVG paths (no
+ * runtime CDN, build-safe), each drawn inside a 32×32 viewBox on the brand
  * colour so they read cleanly on the premium dark theme. Falls back to the
  * ticker initials for any unknown base.
  */
@@ -12,25 +12,25 @@ import { cn } from "@/lib/core";
 type Glyph = { bg: string; fg: string; path: React.ReactNode };
 
 const GLYPHS: Record<string, Glyph> = {
-  // Cardano — three concentric rings of dots, simplified to the signet ring.
-  ADA: {
-    bg: "#0033AD",
+  // Flare — the network's rounded chevron mark on its magenta brand colour.
+  FLR: {
+    bg: "#E62058",
     fg: "#FFFFFF",
     path: (
       <>
-        <circle cx="16" cy="16" r="3.1" />
-        <circle cx="16" cy="6.4" r="1.5" />
-        <circle cx="16" cy="25.6" r="1.5" />
-        <circle cx="7.7" cy="11.2" r="1.5" />
-        <circle cx="24.3" cy="11.2" r="1.5" />
-        <circle cx="7.7" cy="20.8" r="1.5" />
-        <circle cx="24.3" cy="20.8" r="1.5" />
-        <circle cx="16" cy="11" r="1" />
-        <circle cx="16" cy="21" r="1" />
-        <circle cx="11.7" cy="13.5" r="1" />
-        <circle cx="20.3" cy="13.5" r="1" />
-        <circle cx="11.7" cy="18.5" r="1" />
-        <circle cx="20.3" cy="18.5" r="1" />
+        <path d="M9.5 10.2h13.2c.6 0 1 .5 1 1v2.1c0 .6-.4 1-1 1H14v2.4h7.1c.6 0 1 .5 1 1v2.1c0 .6-.4 1-1 1H14v3.1c0 .6-.5 1-1 1h-2.4c-.6 0-1-.4-1-1V11.2c0-.6.4-1 1-1Z" />
+        <circle cx="22.4" cy="23.6" r="2.2" />
+      </>
+    ),
+  },
+  // XRP — the Ripple double-chevron.
+  XRP: {
+    bg: "#23292F",
+    fg: "#FFFFFF",
+    path: (
+      <>
+        <path d="M8.6 8.4h3.2l4.2 4.3 4.2-4.3h3.2l-5.8 5.9a2.2 2.2 0 0 1-3.2 0L8.6 8.4Z" />
+        <path d="M8.6 23.6h3.2l4.2-4.3 4.2 4.3h3.2l-5.8-5.9a2.2 2.2 0 0 0-3.2 0l-5.8 5.9Z" />
       </>
     ),
   },

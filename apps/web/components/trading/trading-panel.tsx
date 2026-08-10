@@ -164,7 +164,7 @@ export default function TradingPanel() {
 
   const handleSubmit = async () => {
     if (!connected || !address) {
-      toast.error("Connect a Cardano wallet first.");
+      toast.error("Connect a wallet first.");
       return;
     }
     if (!market) {
@@ -176,7 +176,7 @@ export default function TradingPanel() {
       return;
     }
     if (account && marginNum > account.free) {
-      toast.error(`Insufficient free balance (${formatUsd(account.free)} dUSD). Deposit or faucet first.`);
+      toast.error(`Insufficient free balance (${formatUsd(account.free)} FXRP). Deposit or faucet first.`);
       return;
     }
     if (isLimit && !(limitNum > 0)) {
@@ -408,7 +408,7 @@ export default function TradingPanel() {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <Label htmlFor="margin" className="text-xs">
-              Margin (dUSD)
+              Margin (FXRP)
             </Label>
             <div className="flex gap-1">
               {[100, 500, 1000, 5000].map((amount) => (
@@ -436,13 +436,13 @@ export default function TradingPanel() {
               onChange={(e) => setMargin(e.target.value)}
             />
             <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
-              dUSD
+              FXRP
             </div>
           </div>
           <div className="flex justify-between text-[10px] text-muted-foreground">
             <span>Free balance</span>
             <span className="font-mono">
-              {account ? `${formatUsd(account.free)} dUSD` : connected ? "…" : "—"}
+              {account ? `${formatUsd(account.free)} FXRP` : connected ? "…" : "—"}
             </span>
           </div>
         </div>
@@ -452,7 +452,7 @@ export default function TradingPanel() {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="limit-price" className="text-xs">
-                Limit price (dUSD)
+                Limit price (FXRP)
               </Label>
               <button
                 type="button"
@@ -482,7 +482,7 @@ export default function TradingPanel() {
                 }}
               />
               <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
-                dUSD
+                FXRP
               </div>
             </div>
             <p
@@ -623,7 +623,7 @@ export default function TradingPanel() {
           <div className="space-y-1 text-xs p-3 bg-muted/40 rounded-lg border border-border/60">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Notional</span>
-              <span className="font-mono font-semibold">{formatUsd(marginNum * leverage)} dUSD</span>
+              <span className="font-mono font-semibold">{formatUsd(marginNum * leverage)} FXRP</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Est. size ({market?.base ?? "…"})</span>
@@ -762,7 +762,7 @@ export default function TradingPanel() {
               <span>
                 {fill.sizeBase.toFixed(4)} {market?.base}
               </span>
-              <span>@ {formatUsd(fill.entryPrice)} dUSD</span>
+              <span>@ {formatUsd(fill.entryPrice)} FXRP</span>
             </div>
           </motion.div>
         )}
@@ -781,7 +781,7 @@ export default function TradingPanel() {
               <span>
                 {side} {estSize ? estSize.toFixed(4) : "—"} {market?.base}
               </span>
-              <span>@ {formatUsd(limitNum || null)} dUSD</span>
+              <span>@ {formatUsd(limitNum || null)} FXRP</span>
             </div>
             <p className="text-[10px] text-muted-foreground leading-snug">
               Hidden from the public feed. It fills automatically when the mark crosses your price — track it

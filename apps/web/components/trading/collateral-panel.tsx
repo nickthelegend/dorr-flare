@@ -13,8 +13,25 @@ import { cn, formatUsd, truncateHash } from "@/lib/core";
 import { useDorrWallet } from "@/hooks/use-dorr-wallet";
 import { useAccount, useInvalidateTrading } from "@/hooks/use-operator";
 import { operator } from "@/lib/operator";
+import { createPublicClient, http, parseUnits, formatUnits, getAddress, type Address } from "viem";
+import { coston2 } from "@/hooks/use-evm-wallet";
 
-const explorerTx = (h: string) => `https://preprod.cardanoscan.io/transaction/${h}`;
+const FXRP_DECIMALS = 6;
+
+const ERC20_ABI = [
+  { inputs: [{ name: "spender", type: "address" }, { name: "amount", type: "uint256" }], name: "approve", outputs: [{ type: "bool" }], stateMutability: "nonpayable", type: "function" },
+  { inputs: [{ name: "owner", type: "address" }, { name: "spender", type: "address" }], name: "allowance", outputs: [{ type: "uint256" }], stateMutability: "view", type: "function" },
+  { inputs: [{ name: "a", type: "address" }], name: "balanceOf", outputs: [{ type: "uint256" }], stateMutability: "view", type: "function" },
+] as const;
+
+const VAULT_ABI = [
+  { inputs: [{ name: "amount", type: "uint256" }], name: "deposit", outputs: [], stateMutability: "nonpayable", type: "function" },
+  { inputs: [{ name: "amount", type: "uint256" }], name: "withdraw", outputs: [], stateMutability: "nonpayable", type: "function" },
+] as const;
+
+const readClient = () => createPublicClient({ chain: coston2, transport: http() });
+
+const explorerTx = (h: string) => `https://coston2-explorer.flare.network/tx/${h}`;
 
 export default function CollateralPanel() {
   const { connected, address, wallet } = useDorrWallet();
@@ -30,90 +47,68 @@ export default function CollateralPanel() {
   const [lastTx, setLastTx] = useState<string | null>(null);
   const cancelled = useRef(false);
 
-  const handleFaucet = async () => {
-    if (!address) return;
-    setFauceting(true);
-    try {
-      const res = await operator.faucet(address, 10_000);
-      setLastTx(res.txHash);
-      toast.success(`Minted ${res.amount.toLocaleString()} dUSD to your wallet`, {
-        description: truncateHash(res.txHash),
-      });
-      invalidate(address);
-    } catch (e: any) {
-      toast.error("Faucet failed", { description: String(e?.message ?? e) });
-    } finally {
-      setFauceting(false);
-    }
+  const handleFaucet = () => {
+    // FXRP on Coston2 comes from Flare's own faucet (100 C2FLR + 10 FXRP + 10 USDT0).
+    window.open("https://faucet.flare.network/coston2", "_blank");
+    toast.info("Flare faucet opened", {
+      description: "Request C2FLR for gas and FXRP for margin, then deposit below.",
+    });
   };
 
-  /** Build + sign + submit a REAL Cardano deposit tx with Mesh, then sync credit. */
+  /** Real FXRP deposit on Flare: ERC-20 approve, then DorrVault.deposit(). */
   const handleDeposit = async () => {
     if (!address || !wallet) return;
-    const n = Math.floor(parseFloat(depositAmt));
+    const n = parseFloat(depositAmt);
     if (!(n > 0)) {
-      toast.error("Enter a dUSD amount to deposit.");
+      toast.error("Enter an FXRP amount to deposit.");
       return;
     }
     setDepositing(true);
     cancelled.current = false;
     try {
-      setDepositStage("fetching vault info");
-      const info = await operator.vaultInfo(address);
-      if (!info.depositDatumCbor) throw new Error("operator returned no deposit datum");
+      setDepositStage("reading vault");
+      const info = await operator.flareInfo();
+      const vault = getAddress(info.contracts.vault) as Address;
+      const fxrp = getAddress(info.collateral.address) as Address;
+      const amount = parseUnits(String(n), FXRP_DECIMALS);
 
-      setDepositStage("building transaction");
-      const { MeshTxBuilder } = await import("@meshsdk/core");
-      const utxos = await wallet.getUtxos();
-      if (!utxos.length) throw new Error("wallet has no UTxOs — fund it with preprod tADA first");
-
-      const txb = new MeshTxBuilder({ verbose: false });
-      txb
-        .txOut(info.vaultAddress, [
-          { unit: "lovelace", quantity: "2000000" },
-          { unit: info.dusdUnit, quantity: String(n * 1_000_000) },
-        ])
-        .txOutInlineDatumValue(info.depositDatumCbor, "CBOR")
-        .changeAddress(address)
-        .selectUtxosFrom(utxos);
-      const unsigned = await txb.complete();
-
-      setDepositStage("awaiting wallet signature");
-      const signed = await wallet.signTx(unsigned);
-
-      setDepositStage("submitting to cardano");
-      const txHash = await wallet.submitTx(signed);
-      setLastTx(txHash);
-      toast.success("Deposit submitted", { description: truncateHash(txHash) });
-
-      // Poll /deposits/sync until the operator credits the on-chain deposit.
-      setDepositStage("waiting for confirmation");
-      const deadline = Date.now() + 5 * 60_000;
-      let credited = false;
-      while (Date.now() < deadline && !cancelled.current) {
-        try {
-          const sync = await operator.syncDeposits(address);
-          if (sync.credited.length > 0) {
-            credited = true;
-            toast.success(
-              `Credited ${sync.credited.reduce((s, c) => s + c.dusd, 0).toLocaleString()} dUSD`,
-              { description: `balance ${formatUsd(sync.balance)} dUSD` },
-            );
-            break;
-          }
-        } catch {
-          /* operator hiccup — keep polling */
-        }
-        await new Promise((r) => setTimeout(r, 5_000));
+      const pc = readClient();
+      const balance = (await pc.readContract({
+        address: fxrp, abi: ERC20_ABI, functionName: "balanceOf", args: [address as Address],
+      })) as bigint;
+      if (balance < amount) {
+        throw new Error(
+          `wallet holds ${formatUnits(balance, FXRP_DECIMALS)} FXRP — use the faucet first`,
+        );
       }
-      if (!credited && !cancelled.current) {
-        toast.info("Deposit on-chain but not credited yet — it will sync automatically.", {
-          description: truncateHash(txHash),
+
+      const allowance = (await pc.readContract({
+        address: fxrp, abi: ERC20_ABI, functionName: "allowance", args: [address as Address, vault],
+      })) as bigint;
+
+      if (allowance < amount) {
+        setDepositStage("approve FXRP (wallet)");
+        const approveHash = await wallet.writeContract({
+          address: fxrp, abi: ERC20_ABI, functionName: "approve", args: [vault, amount],
+          account: address as Address, chain: coston2,
         });
+        setDepositStage("confirming approval");
+        await pc.waitForTransactionReceipt({ hash: approveHash });
       }
+
+      setDepositStage("deposit (wallet)");
+      const txHash = await wallet.writeContract({
+        address: vault, abi: VAULT_ABI, functionName: "deposit", args: [amount],
+        account: address as Address, chain: coston2,
+      });
+      setDepositStage("confirming deposit");
+      await pc.waitForTransactionReceipt({ hash: txHash });
+
+      setLastTx(txHash);
+      toast.success(`Deposited ${n} FXRP`, { description: truncateHash(txHash) });
       invalidate(address);
     } catch (e: any) {
-      const msg = String(e?.message ?? e?.info ?? e);
+      const msg = String(e?.shortMessage ?? e?.message ?? e);
       toast.error("Deposit failed", { description: msg.slice(0, 200) });
     } finally {
       setDepositing(false);
@@ -121,28 +116,33 @@ export default function CollateralPanel() {
     }
   };
 
+  /** Real FXRP withdrawal — signed by the depositor, the only account that can. */
   const handleWithdraw = async () => {
-    if (!address) return;
+    if (!address || !wallet) return;
     const n = parseFloat(withdrawAmt);
     if (!(n > 0)) {
-      toast.error("Enter a dUSD amount to withdraw.");
-      return;
-    }
-    if (account && n > account.free) {
-      toast.error(`Only ${formatUsd(account.free)} dUSD free.`);
+      toast.error("Enter an FXRP amount to withdraw.");
       return;
     }
     setWithdrawing(true);
     try {
-      const res = await operator.withdraw(address, n);
-      setLastTx(res.txHash);
-      toast.success(`Withdrew ${formatUsd(n)} dUSD to your wallet`, {
-        description: truncateHash(res.txHash),
+      const info = await operator.flareInfo();
+      const vault = getAddress(info.contracts.vault) as Address;
+      const amount = parseUnits(String(n), FXRP_DECIMALS);
+
+      const txHash = await wallet.writeContract({
+        address: vault, abi: VAULT_ABI, functionName: "withdraw", args: [amount],
+        account: address as Address, chain: coston2,
       });
+      await readClient().waitForTransactionReceipt({ hash: txHash });
+
+      setLastTx(txHash);
+      toast.success(`Withdrew ${n} FXRP`, { description: truncateHash(txHash) });
       setWithdrawAmt("");
       invalidate(address);
     } catch (e: any) {
-      toast.error("Withdraw failed", { description: String(e?.message ?? e) });
+      const msg = String(e?.shortMessage ?? e?.message ?? e);
+      toast.error("Withdraw failed", { description: msg.slice(0, 200) });
     } finally {
       setWithdrawing(false);
     }
@@ -150,7 +150,7 @@ export default function CollateralPanel() {
 
   return (
     <Card>
-      <PanelHeader title="Collateral · dUSD vault" icon={<Vault className="size-3" />} />
+      <PanelHeader title="Collateral · FXRP vault" icon={<Vault className="size-3" />} />
       <CardContent className="space-y-3">
         {/* balances */}
         <div className="grid grid-cols-3 gap-2">
@@ -184,7 +184,7 @@ export default function CollateralPanel() {
 
         {!connected ? (
           <p className="text-[11px] text-muted-foreground text-center py-1">
-            Connect a Cardano wallet to manage collateral.
+            Connect a wallet to manage collateral.
           </p>
         ) : (
           <>
@@ -202,7 +202,7 @@ export default function CollateralPanel() {
               ) : (
                 <Droplets className="w-3.5 h-3.5 mr-1.5" />
               )}
-              Faucet 10k dUSD
+              Get FXRP
             </Button>
 
             {/* deposit */}
@@ -212,7 +212,7 @@ export default function CollateralPanel() {
                 onChange={(e) => setDepositAmt(e.target.value)}
                 inputMode="numeric"
                 className="h-8 text-xs font-mono"
-                placeholder="dUSD"
+                placeholder="FXRP"
                 disabled={depositing}
               />
               <Button
@@ -242,7 +242,7 @@ export default function CollateralPanel() {
                 onChange={(e) => setWithdrawAmt(e.target.value)}
                 inputMode="numeric"
                 className="h-8 text-xs font-mono"
-                placeholder="dUSD"
+                placeholder="FXRP"
                 disabled={withdrawing}
               />
               <Button

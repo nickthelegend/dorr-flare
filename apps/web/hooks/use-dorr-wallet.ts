@@ -1,48 +1,46 @@
 "use client";
 
-import { useWallet } from "@meshsdk/react";
-import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { setWalletSigner, meshSigner } from "@/lib/operator";
+import { setWalletSigner, evmSigner } from "@/lib/operator";
+import { useEvmWallet } from "./use-evm-wallet";
 
 /**
- * Thin wrapper over @meshsdk/react's useWallet that resolves the connected
- * wallet's bech32 change address (the identity the operator keys accounts on).
+ * dorr's wallet handle.
+ *
+ * Now backed by an EVM wallet on Flare Coston2 — dorr settles on Flare and
+ * margins in FXRP (an ERC-20), so a Cardano CIP-30 wallet could neither hold the
+ * collateral nor sign a settlement transaction. The shape of this hook is
+ * unchanged so every consumer keeps working.
  */
 export function useDorrWallet() {
-  const { name, connecting, connected, wallet, connect, disconnect, error } = useWallet();
+  const evm = useEvmWallet();
 
-  const { data: address } = useQuery({
-    queryKey: ["cardano", "change-address", name ?? "none", connected],
-    enabled: connected && !!wallet,
-    staleTime: Infinity,
-    retry: 1,
-    queryFn: async () => {
-      const addr = await wallet.getChangeAddress();
-      return addr as string;
-    },
-  });
-
-  // Register a wallet signer so value-moving operator calls are signed (secure
-  // trade placement). Cleared on disconnect / address loss.
+  // Register a signer so value-moving operator calls are authenticated
+  // (EIP-191 personal_sign). Cleared on disconnect.
   useEffect(() => {
-    if (connected && wallet && address) {
-      setWalletSigner(meshSigner(wallet as unknown as { signData: (p: string, a?: string) => Promise<{ signature: string; key: string }> }, address));
+    if (evm.connected && evm.address && evm.walletClient) {
+      setWalletSigner(evmSigner(evm.walletClient, evm.address));
     } else {
       setWalletSigner(null);
     }
     return () => setWalletSigner(null);
-  }, [connected, wallet, address]);
+  }, [evm.connected, evm.address, evm.walletClient]);
 
   return {
-    walletName: name,
-    connecting,
-    connected,
-    wallet,
-    connect,
-    disconnect,
-    error,
-    /** bech32 change address once connected (undefined while resolving). */
-    address: connected ? address : undefined,
+    walletName: evm.connected ? "evm" : undefined,
+    connecting: evm.connecting,
+    connected: evm.connected,
+    /** The viem WalletClient — used for FXRP approve/deposit and signing. */
+    wallet: evm.walletClient,
+    connect: evm.connect,
+    disconnect: evm.disconnect,
+    error: evm.error,
+    /** 0x address once connected (undefined while disconnected). */
+    address: evm.address,
+    // Flare-specific extras
+    available: evm.available,
+    chainId: evm.chainId,
+    wrongNetwork: evm.wrongNetwork,
+    switchToCoston2: evm.switchToCoston2,
   };
 }

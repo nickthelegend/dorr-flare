@@ -128,7 +128,7 @@ async function main() {
   console.log("[4c] cancel round-trip: a resting limit order releases its margin");
   const lockedBefore = (await get(`/account/${userAddress}`)).locked;
   const climit = await post("/orders/commit", {
-    address: userAddress, marketId: "ADA-dUSD", side: "LONG", marginUsd: 500, leverage: 3,
+    address: userAddress, marketId: "FLR-USD", side: "LONG", marginUsd: 500, leverage: 3,
     privacyMode: "private", orderType: "limit", limitPrice: 0.10, // below index → LONG limit rests, won't trigger
   });
   await waitJob(climit.jobId);
@@ -138,14 +138,14 @@ async function main() {
   assert(Math.abs(lockedAfter - lockedBefore) < 1e-6, "cancel released the locked margin back to free");
 
   console.log("[4d] batch auction: a sandwich nets $0 under uniform clearing");
-  const batch = await post("/demo/batch", { marketId: "ADA-dUSD", side: "LONG", marginUsd: 1000, leverage: 10 });
+  const batch = await post("/demo/batch", { marketId: "FLR-USD", side: "LONG", marginUsd: 1000, leverage: 10 });
   console.log(`   batch bot profit $${batch.attack.botProfitUsd.toFixed(2)} · sequential bot profit $${batch.sequential.botProfitUsd.toFixed(2)}`);
   assert(Math.abs(batch.attack.botProfitUsd) < 1e-6 && batch.sequential.botProfitUsd > 0,
     "uniform-price batch makes the sandwich worthless (bot $0), sequential venue does not");
 
   console.log("[5] commit private ADA 4x LONG (1,000 dUSD)");
   const commit = await post("/orders/commit", {
-    address: userAddress, marketId: "ADA-dUSD", side: "LONG", marginUsd: 1_000, leverage: 4, privacyMode: "private",
+    address: userAddress, marketId: "FLR-USD", side: "LONG", marginUsd: 1_000, leverage: 4, privacyMode: "private",
   });
   console.log(`   commitment (public sees only this): ${commit.commitmentHash}`);
   assert(/^[0-9a-f]{64}$/.test(commit.commitmentHash), "commitment is a 32-byte hash");

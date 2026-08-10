@@ -459,11 +459,26 @@ export function authMessage(action: string, params: Record<string, unknown>, ts:
   return `dorr:${action}\n${canonical}\nts:${ts}`;
 }
 /** Build a signer from a connected Mesh wallet + its bech32 address. */
-export function meshSigner(wallet: { signData: (payload: string, address?: string) => Promise<DataSignature> }, address: string): WalletSigner {
+/**
+ * EVM wallet signer (EIP-191 personal_sign) — dorr settles on Flare, so the
+ * identity that authorises a value-moving call is an EVM account. The signed
+ * message is byte-identical to what the operator reconstructs, so the server can
+ * recover the signer and reject anything it can't attribute to the acting address.
+ */
+export function evmSigner(
+  walletClient: { signMessage: (args: { account: `0x${string}`; message: string }) => Promise<string> },
+  address: string,
+): WalletSigner {
   return async (action, params) => {
     const ts = Date.now();
-    const sig = await wallet.signData(toHex(authMessage(action, params, ts)), address);
-    return { signer: address, ts, sig };
+    const message = authMessage(action, params, ts);
+    const signature = await walletClient.signMessage({
+      account: address as `0x${string}`,
+      message,
+    });
+    // `key` is unused for EVM (the address is recoverable from the signature);
+    // kept so the envelope shape stays stable across wallet backends.
+    return { signer: address, ts, sig: { signature, key: "" } };
   };
 }
 
@@ -632,6 +647,19 @@ export const operator = {
 
   /** Proof of solvency — on-chain vault reserves vs credited liabilities. */
   solvency: () => get<Solvency>("/ops/solvency"),
+
+  /** Flare settlement layer: contracts, FXRP collateral, oracle, enclave. */
+  flareInfo: () =>
+    get<{
+      network: string;
+      chainId: number;
+      explorer: string;
+      contracts: { vault: string; settlement: string; teeVerifier: string; ftsoV2: string };
+      collateral: { symbol: string; address: string; decimals: number; totalSupply: number };
+      solvency: { solvent: boolean; reservesFxrp: number; liabilitiesFxrp: number };
+      enclave: { configured: boolean; signer?: string; teeId?: string; measurement?: string };
+      batchesSettled: number;
+    }>("/flare/info"),
 
   /** The trader's own activity timeline (all events when no address). */
   events: async (address?: string) =>

@@ -82,7 +82,7 @@ const TONE_RING: Record<Tone, string> = {
   purple: "border-purple-400/40 bg-purple-400/10",
 };
 
-const explorerTx = (h: string) => `https://preprod.cardanoscan.io/transaction/${h}`;
+const explorerTx = (h: string) => `https://coston2-explorer.flare.network/tx/${h}`;
 
 function EventRow({ event }: { event: DorrEvent }) {
   const meta = EVENT_META[event.type] ?? { icon: Activity, tone: "neutral" as Tone };

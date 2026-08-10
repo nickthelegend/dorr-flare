@@ -44,7 +44,7 @@ async function main() {
   const enclavePub = decodeSealed(att.eciesPublicKey);
 
   console.log("\n[2] two traders seal orders to the enclave (client-side)");
-  const market = marketById("ADA-dUSD")!;
+  const market = marketById("FLR-USD")!;
   const orders = [
     { trader: "0xA1", side: "LONG", sizeBase: 30_000, marginFxrp: 1.5, leverage: 4 },
     { trader: "0xB0", side: "SHORT", sizeBase: 12_000, marginFxrp: 0.6, leverage: 4 },

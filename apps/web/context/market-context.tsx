@@ -3,10 +3,10 @@
 import { createContext, useState, useContext, type ReactNode } from "react";
 
 /**
- * Holds the selected dorr market id (e.g. "ADA-dUSD").
+ * Holds the selected dorr market id (e.g. "FLR-USD").
  * Live market data (prices, leverage caps) comes from useMarkets() polling.
  */
-export const DEFAULT_MARKET_ID = "ADA-dUSD";
+export const DEFAULT_MARKET_ID = "FLR-USD";
 
 interface MarketContextType {
   selectedMarketId: string;

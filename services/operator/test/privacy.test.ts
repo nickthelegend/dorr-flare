@@ -4,7 +4,7 @@ import { orderCommitmentHex } from "@dorr/engine/order/commitment";
 import { publicFeedView, leaksSensitiveData } from "../src/privacy.js";
 
 const base = {
-  pairId: "ADA-dUSD",
+  pairId: "FLR-USD",
   side: "LONG" as const,
   price: "0.157000",
   size: "31787.83000000",
@@ -54,7 +54,7 @@ const secret = { side: "LONG" as const, sizeBase: 31787.83, leverage: 5, price: 
 
 test("PRIVATE order: public feed view exposes only market + commitment hash", () => {
   const view = publicFeedView({
-    marketId: "ADA-dUSD", privacyMode: "private", commitmentHash: orderCommitmentHex(base),
+    marketId: "FLR-USD", privacyMode: "private", commitmentHash: orderCommitmentHex(base),
     createdAt: "t", ...secret, sizeBase: secret.sizeBase,
   });
   expect(view.leaked).toBeUndefined();
@@ -64,7 +64,7 @@ test("PRIVATE order: public feed view exposes only market + commitment hash", ()
 
 test("PUBLIC order (A/B foil): deliberately leaks side/size/leverage", () => {
   const view = publicFeedView({
-    marketId: "ADA-dUSD", privacyMode: "public", commitmentHash: orderCommitmentHex(base),
+    marketId: "FLR-USD", privacyMode: "public", commitmentHash: orderCommitmentHex(base),
     createdAt: "t", ...secret, sizeBase: secret.sizeBase,
   });
   expect(view.leaked).toBeDefined();

@@ -70,7 +70,7 @@ function FeedRow({ entry }: { entry: FeedEntry }) {
 /**
  * The attacker's-eye view: what an observer of the order flow actually sees.
  * dorr-private entries reveal only a commitment hash; foil entries leak it all.
- * Second tab is the on-chain evidence: real Cardano settlement anchors.
+ * Second tab is the on-chain evidence: real Flare settlement anchors.
  */
 export default function PublicFeed() {
   const [tab, setTab] = useState<"feed" | "anchors">("feed");

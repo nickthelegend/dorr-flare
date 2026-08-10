@@ -17,7 +17,7 @@ function envelope(action: string, params: Record<string, unknown>, over: Partial
 beforeEach(() => _resetAuthSeen());
 
 test("valid signed request passes", () => {
-  const p = { address: SIGNER, marketId: "ADA-dUSD" };
+  const p = { address: SIGNER, marketId: "FLR-USD" };
   const r = verifyAuth("commit", p, envelope("commit", p), SIGNER, NOW, accept);
   expect(r.ok).toBe(true);
 });

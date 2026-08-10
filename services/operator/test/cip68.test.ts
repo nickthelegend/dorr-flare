@@ -37,8 +37,8 @@ test("mint CIP-68 position NFT: 222 to trader, 100+metadata to operator", async 
   const tokenNameHex = fromText("dorrpos-abcd1234");
 
   const meta = {
-    name: "dorr ADA-dUSD LONG",
-    market: "ADA-dUSD",
+    name: "dorr FLR-USD LONG",
+    market: "FLR-USD",
     side: "LONG",
     entryPrice: "0.15790",
     size: "31787.83",
@@ -71,7 +71,7 @@ test("mint CIP-68 position NFT: 222 to trader, 100+metadata to operator", async 
   expect(datum.index).toBe(0);
   const [mdMap, version] = datum.fields as [Map<string, string>, bigint];
   expect(version).toBe(1n);
-  expect(toText(mdMap.get(fromText("market"))!)).toBe("ADA-dUSD");
+  expect(toText(mdMap.get(fromText("market"))!)).toBe("FLR-USD");
   expect(toText(mdMap.get(fromText("side"))!)).toBe("LONG");
   expect(toText(mdMap.get(fromText("leverage"))!)).toBe("5");
 }, 60_000);

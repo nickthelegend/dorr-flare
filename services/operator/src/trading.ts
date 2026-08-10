@@ -65,7 +65,7 @@ function freshIndexPrice(marketId: string): number {
 }
 
 /**
- * Reserved open interest for a market (notional, dUSD): booked notional of every
+ * Reserved open interest for a market (notional, FXRP): booked notional of every
  * open position plus every committed-but-unexecuted order. Used to enforce the
  * per-market OI risk cap so no single market can over-lever the vAMM.
  */
@@ -108,14 +108,14 @@ export function commitOrder(p: CommitParams): { order: DorrOrder; jobId: string 
   }
   const acct = account(p.address);
   const free = acct.balance - acct.locked;
-  if (p.marginUsd > free) throw new Error(`insufficient free margin: ${free.toFixed(2)} dUSD`);
+  if (p.marginUsd > free) throw new Error(`insufficient free margin: ${free.toFixed(2)} FXRP`);
 
   // Per-market open-interest risk cap — keep any one market from over-levering the vAMM.
   const thisNotional = p.marginUsd * p.leverage;
   const reservedOi = marketReservedOiUsd(p.marketId);
   if (reservedOi + thisNotional > m.maxOiUsd) {
     throw new Error(
-      `market ${p.marketId} open-interest cap reached (${reservedOi.toFixed(0)} + ${thisNotional.toFixed(0)} > ${m.maxOiUsd} dUSD) — reduce size or wait`,
+      `market ${p.marketId} open-interest cap reached (${reservedOi.toFixed(0)} + ${thisNotional.toFixed(0)} > ${m.maxOiUsd} FXRP) — reduce size or wait`,
     );
   }
 
@@ -388,11 +388,11 @@ export function closePosition(
       type: "partial-close",
       address: pos.address,
       marketId: pos.marketId,
-      detail: `Partial close ${(f * 100).toFixed(0)}% @ ${exitPrice.toFixed(6)} — realized ${(pnl - fee).toFixed(2)} dUSD`,
+      detail: `Partial close ${(f * 100).toFixed(0)}% @ ${exitPrice.toFixed(6)} — realized ${(pnl - fee).toFixed(2)} FXRP`,
     });
     const pjob = createJob("close", pos.id);
     jobStep(pjob, `partial close ${(f * 100).toFixed(0)}% @ ${exitPrice.toFixed(6)}`).done({
-      detail: `realized ${(pnl - fee).toFixed(2)} dUSD; ${pos.sizeBase.toFixed(4)} left open`,
+      detail: `realized ${(pnl - fee).toFixed(2)} FXRP; ${pos.sizeBase.toFixed(4)} left open`,
     });
     completeJob(pjob);
     return { position: pos, jobId: pjob.id };
@@ -414,7 +414,7 @@ export function closePosition(
       (reason === "stop-loss" ? "🛡️ Stop-loss fired" :
         reason === "take-profit" ? "🎯 Take-profit hit" :
         reason === "liquidated" ? "⚔️ Liquidated" : "Closed") +
-      ` @ ${exitPrice.toFixed(6)} — PnL ${(pos.realizedPnl ?? 0).toFixed(2)} dUSD`,
+      ` @ ${exitPrice.toFixed(6)} — PnL ${(pos.realizedPnl ?? 0).toFixed(2)} FXRP`,
   });
 
   const job = createJob("close", pos.id);
@@ -446,7 +446,7 @@ export function closePosition(
       return;
     }
 
-    const s2 = jobStep(job, "cardano: anchor settlement digest (preprod)");
+    const s2 = jobStep(job, "flare: anchor settlement digest");
     let anchorTxHash: string | undefined;
     try {
       const res = await anchorSettlement(settlementId, initialHex, midnightSettleTx);
@@ -463,7 +463,7 @@ export function closePosition(
         type: "anchor",
         address: pos.address,
         marketId: pos.marketId,
-        detail: `Settlement digest anchored on Cardano L1`,
+        detail: `Settlement digest anchored on Flare`,
         txHash: anchorTxHash,
         chain: "cardano",
       });
@@ -559,7 +559,7 @@ export function adjustMargin(positionId: string, deltaUsd: number): DorrPosition
   const acct = account(pos.address);
   if (deltaUsd > 0) {
     const free = acct.balance - acct.locked;
-    if (deltaUsd > free) throw new Error(`insufficient free margin: ${free.toFixed(2)} dUSD`);
+    if (deltaUsd > free) throw new Error(`insufficient free margin: ${free.toFixed(2)} FXRP`);
     acct.locked += deltaUsd;
     pos.marginUsd += deltaUsd;
   } else if (deltaUsd < 0) {
@@ -581,7 +581,7 @@ export function adjustMargin(positionId: string, deltaUsd: number): DorrPosition
     type: "margin",
     address: pos.address,
     marketId: pos.marketId,
-    detail: `${deltaUsd > 0 ? "Added" : "Removed"} ${Math.abs(deltaUsd).toFixed(2)} dUSD margin — now ${pos.leverage.toFixed(1)}x`,
+    detail: `${deltaUsd > 0 ? "Added" : "Removed"} ${Math.abs(deltaUsd).toFixed(2)} FXRP margin — now ${pos.leverage.toFixed(1)}x`,
   });
   return pos;
 }
@@ -628,8 +628,8 @@ export function cancelOrder(orderId: string): DorrOrder {
     marketId: order.marketId,
     detail:
       order.orderType === "limit"
-        ? `Cancelled resting limit order — ${order.marginUsd.toFixed(2)} dUSD margin released`
-        : `Cancelled committed order — ${order.marginUsd.toFixed(2)} dUSD margin released`,
+        ? `Cancelled resting limit order — ${order.marginUsd.toFixed(2)} FXRP margin released`
+        : `Cancelled committed order — ${order.marginUsd.toFixed(2)} FXRP margin released`,
   });
   return order;
 }
@@ -657,7 +657,7 @@ export async function anchorOrderCommitment(
     type: "anchor",
     address: order.address,
     marketId: order.marketId,
-    detail: `Order commitment timestamped on Cardano L1 — existence provable, contents still hidden`,
+    detail: `Order commitment timestamped on Flare — existence provable, contents still hidden`,
     txHash,
     chain: "cardano",
   });
@@ -689,7 +689,7 @@ export function addSealedOrder(p: {
   if (!(p.targetRound > 0)) throw new Error("targetRound must be a positive drand round");
   const acct = account(p.address);
   const free = acct.balance - acct.locked;
-  if (p.maxMarginUsd > free) throw new Error(`insufficient free margin: ${free.toFixed(2)} dUSD`);
+  if (p.maxMarginUsd > free) throw new Error(`insufficient free margin: ${free.toFixed(2)} FXRP`);
 
   const so: SealedOrder = {
     id: randomBytes(8).toString("hex"),
@@ -824,7 +824,7 @@ export async function settleSealedBatch(marketId: string): Promise<SealedBatchRe
         logEvent({
           type: "anchor",
           marketId,
-          detail: `Sealed-batch membership anchored on Cardano L1 — the epoch's order set is publicly auditable`,
+          detail: `Sealed-batch membership anchored on Flare — the epoch's order set is publicly auditable`,
           txHash: res.txHash,
           chain: "cardano",
         });

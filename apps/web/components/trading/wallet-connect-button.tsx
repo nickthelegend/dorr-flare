@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -10,129 +9,62 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChevronDown, Copy, LogOut, Wallet, Loader2 } from "lucide-react";
+import { ChevronDown, Copy, LogOut, Wallet, Loader2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { cn, truncateAddress } from "@/lib/core";
 import { useDorrWallet } from "@/hooks/use-dorr-wallet";
 
-interface AvailableWallet {
-  id?: string;
-  name: string;
-  icon: string;
-  version: string;
-}
-
 /**
- * Cardano wallet connect button (CIP-30 via Mesh).
- * Lists installed wallets (Lace/Eternl/...) — renders fine with none installed.
+ * EVM wallet connect for Flare Coston2 (MetaMask, Rabby, Brave, …).
+ *
+ * dorr margins in FXRP — an ERC-20 on Flare — so the connected account has to be
+ * an EVM account that can hold the collateral and sign settlement. Renders a
+ * clear install prompt when no injected wallet is present, and a one-click
+ * network switch when the wallet is on the wrong chain.
  */
 export function WalletConnectButton({ className }: { className?: string }) {
-  const { connected, connecting, connect, disconnect, address, walletName } = useDorrWallet();
-  const [available, setAvailable] = useState<AvailableWallet[]>([]);
-  const [open, setOpen] = useState(false);
-  const [pendingWallet, setPendingWallet] = useState<string | null>(null);
+  const {
+    connected, connecting, connect, disconnect, address, walletName,
+    available, wrongNetwork, switchToCoston2,
+  } = useDorrWallet();
 
-  // Discover CIP-30 wallets lazily (client-only, wasm-free code path).
-  useEffect(() => {
-    if (!open || available.length > 0) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const { BrowserWallet } = await import("@meshsdk/core");
-        const wallets = await BrowserWallet.getAvailableWallets();
-        if (!cancelled) setAvailable(wallets as AvailableWallet[]);
-      } catch (e) {
-        console.warn("wallet discovery failed", e);
-        if (!cancelled) setAvailable([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [open, available.length]);
-
-  const handleConnect = async (name: string) => {
-    setPendingWallet(name);
-    try {
-      await connect(name);
-      setOpen(false);
-    } catch (e) {
-      toast.error(`Failed to connect ${name}`);
-    } finally {
-      setPendingWallet(null);
+  const handleConnect = async () => {
+    if (!available) {
+      toast.error("No EVM wallet found", {
+        description: "Install MetaMask or Rabby to trade on Flare.",
+        action: { label: "MetaMask", onClick: () => window.open("https://metamask.io/download/", "_blank") },
+      });
+      return;
     }
+    await connect();
   };
 
   if (!connected) {
     return (
-      <DropdownMenu open={open} onOpenChange={setOpen}>
-        <DropdownMenuTrigger asChild>
-          <Button
-            className={cn(
-              "bg-primary hover:bg-primary/90 text-primary-foreground",
-              className,
-            )}
-            disabled={connecting}
-          >
-            {connecting || pendingWallet ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <Wallet className="w-4 h-4 mr-2" />
-            )}
-            Connect Wallet
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-64">
-          <DropdownMenuLabel className="text-xs text-muted-foreground">
-            Cardano wallets (CIP-30)
-          </DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          {available.length === 0 ? (
-            <div className="px-2 py-4 text-xs text-muted-foreground text-center space-y-1">
-              <div>No CIP-30 wallets found.</div>
-              <div>
-                Install{" "}
-                <a
-                  href="https://www.lace.io"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="underline text-primary"
-                >
-                  Lace
-                </a>{" "}
-                or{" "}
-                <a
-                  href="https://eternl.io"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="underline text-primary"
-                >
-                  Eternl
-                </a>{" "}
-                (preprod).
-              </div>
-            </div>
-          ) : (
-            available.map((w) => (
-              <DropdownMenuItem
-                key={w.id ?? w.name}
-                className="cursor-pointer gap-2"
-                onSelect={(e) => {
-                  e.preventDefault();
-                  handleConnect(w.id ?? w.name);
-                }}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={w.icon} alt={w.name} className="w-5 h-5 rounded" />
-                <span className="capitalize">{w.name}</span>
-                {pendingWallet === (w.id ?? w.name) && (
-                  <Loader2 className="w-3 h-3 ml-auto animate-spin" />
-                )}
-              </DropdownMenuItem>
-            ))
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <Button
+        onClick={handleConnect}
+        disabled={connecting}
+        className={cn("bg-primary hover:bg-primary/90 text-primary-foreground", className)}
+      >
+        {connecting ? (
+          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+        ) : (
+          <Wallet className="w-4 h-4 mr-2" />
+        )}
+        {connecting ? "Connecting…" : "Connect Wallet"}
+      </Button>
+    );
+  }
+
+  if (wrongNetwork) {
+    return (
+      <Button
+        onClick={() => switchToCoston2().catch(() => toast.error("Network switch rejected"))}
+        className={cn("bg-destructive hover:bg-destructive/90 text-white", className)}
+      >
+        <AlertTriangle className="w-4 h-4 mr-2" />
+        Switch to Coston2
+      </Button>
     );
   }
 

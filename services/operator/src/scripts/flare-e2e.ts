@@ -58,7 +58,7 @@ async function main() {
   const signer = enclaveAddress();
   console.log(`   enclave signer: ${signer}`);
 
-  const market = marketById("ADA-dUSD")!;
+  const market = marketById("FLR-USD")!;
   const feed = await readFeed(market.feedId);
   console.log(`   FTSO ${market.symbol} = $${feed.price.toFixed(6)}`);
 
