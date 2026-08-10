@@ -63,7 +63,7 @@ FLARE_CHAIN_ID=114
 FLARE_EXPLORER=https://coston2-explorer.flare.network
 FXRP_ADDRESS=0x0b6A3645c240605887a5532109323A3E12273dc7
 DORR_VAULT_ADDRESS=0x65b705A49778b9d7bD741A0A979162393c699a98
-DORR_SETTLEMENT_ADDRESS=0x0F99f3a1486D167A9c903F336f1b56869c30e583
+DORR_SETTLEMENT_ADDRESS=0x047478DE7d2ed6B41dEFC14223764411288Db845
 DORR_TEE_VERIFIER_ADDRESS=0x578D75dDbce7fBB05072b733F372De2241d698aE
 FLARE_RELAYER_KEY=0x…        # pays gas for settleBatch
 TEE_ENCLAVE_KEY=0x…          # enclave signing key
@@ -96,7 +96,7 @@ DORR_AUTH=1                  # optional: enforce wallet signatures
 | Leg | Tx |
 |---|---|
 | FXRP approve + vault deposit | `0x1d716fc5…` |
-| Sealed batch settled on Flare (FTSO re-read + quote verified) | `0xc3a1c184…` |
+| Sealed batch settled on Flare (FTSO re-read + quote verified) | `0x3a732edf…` |
 | Earlier sealed batch | `0xd942461e…` |
 | Depositor-signed withdrawal (operator uninvolved) | `0x32d2aad1…` |
 

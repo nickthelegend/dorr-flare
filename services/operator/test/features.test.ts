@@ -3,8 +3,6 @@
  * rest invisibly then trigger, hidden stop-loss/take-profit, partial close,
  * add/remove margin, and the slippage guard.
  */
-process.env.DORR_ZK_MODE = "stub";
-process.env.DORR_TEST = "1";
 
 import { test, expect, beforeAll } from "bun:test";
 

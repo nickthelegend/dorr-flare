@@ -15,7 +15,7 @@ async function main() {
   await validateFeeds();
   startPricePolling();
 
-  // Seed vAMM pools once prices exist, then keep them centered on Pyth.
+  // Seed vAMM pools once prices exist, then keep them centered on FTSO.
   const seeded = new Set<string>();
   setInterval(() => {
     for (const m of MARKETS) {

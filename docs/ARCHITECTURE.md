@@ -49,7 +49,7 @@ flowchart TB
 | Frontend | `apps/web` | UniPerp premium UI on an EIP-1193 wallet; seals orders in-browser with tlock |
 | Operator | `services/operator` | vAMM, accounting, EIP-191 auth, sealed-bid keeper, Flare tx layer |
 | Enclave | `services/operator/src/enclave` | separate process; holds the ECIES key and signs batch attestations |
-| Engine | `packages/engine` | off-chain perps engine (margin/funding/liquidation/commitment/uniform-price clearing) |
+| Engine | `packages/engine` | the order-commitment scheme; execution, margin, funding and clearing live in the operator |
 | Contracts | `contracts` | `DorrVault` · `DorrBatchSettlement` · `TEEAttestationVerifier` (Solidity, Foundry green) |
 
 ## A trade, end to end

@@ -10,7 +10,7 @@
  * batch settles, so the operator cannot settle at a price the oracle disagrees
  * with. This module and that contract are two views of one source of truth.
  *
- * The exported surface is intentionally identical to the old Pyth module so the
+ * The exported surface is intentionally identical to the module it replaced so the
  * trading engine, routes and the web app are unaffected by the migration.
  */
 import { createPublicClient, http, type Address, type PublicClient } from "viem";

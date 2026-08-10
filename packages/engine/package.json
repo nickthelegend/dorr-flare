@@ -12,10 +12,6 @@
   "scripts": {
     "test": "vitest run"
   },
-  "dependencies": {
-    "@lucid-evolution/lucid": "0.4.29",
-    "@lucid-evolution/utils": "0.1.66"
-  },
   "devDependencies": {
     "@types/node": "^22.15.0",
     "typescript": "^5.9.3",

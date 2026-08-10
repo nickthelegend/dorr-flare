@@ -1,6 +1,6 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "dorr-web", "runtimeExecutable": "bun", "runtimeArgs": ["run", "--cwd", "apps/web", "dev"], "port": 3000 }
+    { "name": "dorr-web", "runtimeExecutable": "bun", "runtimeArgs": ["run", "dev"], "port": 3000 }
   ]
 }

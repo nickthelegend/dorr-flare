@@ -5,11 +5,8 @@
  *   • cancel — a resting order is cancellable and releases its margin
  *   • stats — open interest / skew / funding surface correctly
  *   • batch preview — resting committed orders clear at one uniform price
- * ZK/L1 legs are the env-gated test doubles (stub); the real proofs + preprod
- * txs are covered by the live E2E.
+ *   • liquidation + funding keepers — driven through the real scan functions
  */
-process.env.DORR_ZK_MODE = "stub";
-process.env.DORR_TEST = "1";
 
 import { test, expect, beforeAll } from "bun:test";
 import { clearBatchUniform, runBatchAuctionDemo, batchDigest, type BatchOrder } from "../src/batch.js";
@@ -249,4 +246,86 @@ test("BATCH PREVIEW: resting committed orders clear at one uniform price", async
   expect(prices.size).toBe(1); // one uniform clearing price
   expect(prev.clearing.matchedBase).toBeGreaterThan(0); // long/short cross internally
   expect(prev.digest).toMatch(/^[0-9a-f]{64}$/);
+});
+
+// ─── liquidation keeper (wired) ──────────────────────────────────────────────
+test("LIQUIDATION: the keeper closes a position that falls below maintenance margin", async () => {
+  await post("/demo/reset");
+  await post("/demo/seed", { address: USER, dusd: 50_000 });
+  setPrice(0.15);
+
+  // 10x LONG — a ~10% adverse move wipes the margin well past the 5% floor.
+  const commit = await j(await post("/orders/commit", {
+    address: USER, marketId: FLR, side: "LONG", marginUsd: 1_000, leverage: 10, privacyMode: "private",
+  }));
+  const exe = await j(await post(`/orders/${commit.orderId}/execute`));
+  const posId = exe.position.id;
+  expect(exe.position.status).toBe("open");
+
+  // Nothing to do while the position is healthy.
+  expect(trading.scanLiquidations()).toEqual([]);
+
+  // Crash the index; the keeper re-reads it exactly as it does in production.
+  setPrice(0.12);
+  const liquidated = trading.scanLiquidations();
+  expect(liquidated).toContain(posId);
+
+  const after = await j(await get(`/positions/${USER}`));
+  const pos = after.positions.find((p: any) => p.id === posId);
+  expect(pos.status).toBe("liquidated");
+  expect(pos.closeReason).toBe("liquidated");
+
+  // Margin is released back to free (no longer locked against a dead position).
+  const acct = await j(await get(`/account/${USER}`));
+  expect(acct.locked).toBe(0);
+
+  // Liquidating twice is a no-op — a closed position is never re-liquidated.
+  expect(trading.scanLiquidations()).toEqual([]);
+});
+
+test("LIQUIDATION: a healthy position is left alone", async () => {
+  await post("/demo/reset");
+  await post("/demo/seed", { address: USER, dusd: 50_000 });
+  setPrice(0.15);
+
+  const commit = await j(await post("/orders/commit", {
+    address: USER, marketId: FLR, side: "LONG", marginUsd: 1_000, leverage: 2, privacyMode: "private",
+  }));
+  const exe = await j(await post(`/orders/${commit.orderId}/execute`));
+
+  // 2x leverage: a 1% dip is nowhere near the maintenance floor.
+  setPrice(0.1485);
+  expect(trading.scanLiquidations()).toEqual([]);
+
+  const after = await j(await get(`/positions/${USER}`));
+  expect(after.positions.find((p: any) => p.id === exe.position.id).status).toBe("open");
+});
+
+// ─── funding keeper (wired) ──────────────────────────────────────────────────
+test("FUNDING: the tick accrues on open positions and records history", async () => {
+  await post("/demo/reset");
+  await post("/demo/seed", { address: USER, dusd: 50_000 });
+  setPrice(0.15);
+
+  const commit = await j(await post("/orders/commit", {
+    address: USER, marketId: FLR, side: "LONG", marginUsd: 1_000, leverage: 5, privacyMode: "private",
+  }));
+  const exe = await j(await post(`/orders/${commit.orderId}/execute`));
+  expect(exe.position.fundingPaid).toBe(0);
+
+  // Push the vAMM mark above the index so the premium — and therefore the
+  // funding rate — is unambiguously positive: longs pay.
+  vamm.fill(FLR, "LONG", 200_000);
+  const markBefore = vamm.markPrice(FLR)!;
+  expect(markBefore).toBeGreaterThan(0.15);
+
+  trading.applyFundingTick();
+
+  const after = await j(await get(`/positions/${USER}`));
+  const pos = after.positions.find((p: any) => p.id === exe.position.id);
+  expect(pos.fundingPaid).toBeGreaterThan(0); // long pays into a positive premium
+
+  const stats = await j(await get("/stats"));
+  const flr = stats.markets.find((m: any) => m.id === FLR);
+  expect(flr.fundingRateHourly).toBeGreaterThan(0);
 });

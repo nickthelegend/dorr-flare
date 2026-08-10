@@ -47,7 +47,7 @@ Driven from the browser with a real wallet — every leg is a real transaction:
 | leg | tx |
 |---|---|
 | FXRP approve + **vault deposit** | [`0x1d716fc5…`](https://coston2-explorer.flare.network/tx/0x1d716fc540915da12051700e4a74b74160804b8bf45d60ab2f0b99149b910b71) |
-| **sealed batch settled on Flare** (FTSO re-read + enclave quote verified) | [`0xc3a1c184…`](https://coston2-explorer.flare.network/tx/0xc3a1c184d35ccb1799425df0) |
+| **sealed batch settled on Flare** (FTSO re-read + enclave quote verified) | [`0x3a732edf…`](https://coston2-explorer.flare.network/tx/0x3a732edf643605afbbfaa0c98bd1bc6214ab894759415e7c5a5b76e2209e3312) |
 | earlier sealed batch | [`0xd942461e…`](https://coston2-explorer.flare.network/tx/0xd942461ed322c2a83f974c98ef16e863d6a014aeb49e4ff8db24e466cc995619) |
 | **depositor-signed withdrawal** (operator uninvolved) | [`0x32d2aad1…`](https://coston2-explorer.flare.network/tx/0x32d2aad1f82f3b1ea3791a397f40cdd78de04aefbdab88351c134473baa98bd2) |
 
@@ -56,7 +56,7 @@ Deployed contracts:
 | contract | address |
 |---|---|
 | `DorrVault` (FXRP margin) | [`0x65b705A4…`](https://coston2-explorer.flare.network/address/0x65b705A49778b9d7bD741A0A979162393c699a98) |
-| `DorrBatchSettlement` | [`0x0F99f3a1…`](https://coston2-explorer.flare.network/address/0x0F99f3a1486D167A9c903F336f1b56869c30e583) |
+| `DorrBatchSettlement` | [`0x047478DE…`](https://coston2-explorer.flare.network/address/0x047478DE7d2ed6B41dEFC14223764411288Db845) |
 | `TEEAttestationVerifier` | [`0x578D75dD…`](https://coston2-explorer.flare.network/address/0x578D75dDbce7fBB05072b733F372De2241d698aE) |
 
 ## Quickstart
@@ -77,7 +77,7 @@ Connect MetaMask on **Flare Coston2** (chain `114`) → claim test FXRP from [Fl
 | `services/operator` | 6 markets on **FTSO v2**, vAMM executor, margin/funding/liquidation, sealed-bid batch keeper, Flare tx layer |
 | `services/operator/src/enclave` | confidential matching engine — holds the ECIES key, signs batch attestations |
 | `contracts` | `DorrVault` · `DorrBatchSettlement` · `TEEAttestationVerifier` (Solidity/Foundry) |
-| `packages/engine` | off-chain perps engine (commitments, uniform-price clearing, margin math) |
+| `packages/engine` | the order-commitment scheme (`SHA-256(fields‖nonce)`) — the primitive privacy and selective disclosure rest on |
 
 ## Docs
 
@@ -86,7 +86,7 @@ Also: design rationale in [DESIGN.md](./DESIGN.md) · stage script in [DEMO.md](
 
 ## Testing
 
-**85 operator tests + 31 Solidity tests**, all green. Coverage includes the sealed-bid timelock path against **live drand**, uniform-price batch clearing, selective disclosure (including re-opening a sealed order's ciphertext), EIP-191 auth against real keys, the FTSO drift guard, TEE attestation binding, and two `DorrVault` fuzz runs asserting a withdrawal can never exceed free balance, with or without locked margin. See [docs/TESTING.md](./docs/TESTING.md).
+**88 operator + 31 Solidity + 3 engine tests**, all green. Coverage includes the sealed-bid timelock path against **live drand**, uniform-price batch clearing, selective disclosure (including re-opening a sealed order's ciphertext), EIP-191 auth against real keys, the FTSO drift guard, TEE attestation binding, the liquidation and funding keepers driven through their real scan functions, and two `DorrVault` fuzz runs asserting a withdrawal can never exceed free balance, with or without locked margin. See [docs/TESTING.md](./docs/TESTING.md).
 
 ## Honest scope (v1)
 

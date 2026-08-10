@@ -1,12 +1,9 @@
 /**
  * In-process integration test of the full trade lifecycle + privacy, driven
  * through the real Hono routes via app.request — no network, no browser.
- * ZK proofs and the L1 anchor are replaced by env-gated test doubles
- * (DORR_ZK_MODE=stub, DORR_TEST=1) so this runs in milliseconds; the REAL
- * proofs + on-chain txs are covered by the live E2E (onchain-e2e).
+ * Prices are pinned deterministically; the on-chain settlement leg is covered
+ * by the live E2E (flare-e2e / confidential-e2e) against Coston2.
  */
-process.env.DORR_ZK_MODE = "stub";
-process.env.DORR_TEST = "1";
 // auth stays off here (DORR_AUTH unset) — auth is pinned in auth.test.ts.
 
 import { test, expect, beforeAll } from "bun:test";

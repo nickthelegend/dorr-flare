@@ -51,11 +51,6 @@ const PRICE_STALE_MS = 30_000;
 
 const sha256 = (s: string | Buffer) => createHash("sha256").update(s).digest("hex");
 
-/** Trader secret for the Midnight authority circuit — derived per order (operator-held in v1). */
-function traderSkFor(order: { id: string; address: string; nonce: string }): string {
-  return sha256(`dorr:trader-sk:v1:${order.address}:${order.id}:${order.nonce}`);
-}
-
 function freshIndexPrice(marketId: string): number {
   const m = marketById(marketId);
   if (!m) throw new Error(`unknown market ${marketId}`);
@@ -98,8 +93,8 @@ export interface CommitParams {
 
 /**
  * Step 1 — COMMIT. Locks margin, builds the SHA-256 order commitment, and (in
- * private mode) publishes ONLY the hash. Midnight deploy + authority proof run
- * as an async job. In public mode (the A/B foil) full params leak to /feed.
+ * private mode) publishes ONLY the hash. In public mode (the A/B foil) the full
+ * params leak to /feed — that contrast is the demo.
  */
 export function commitOrder(p: CommitParams): { order: DorrOrder; jobId: string } {
   const m = marketById(p.marketId);
@@ -159,7 +154,6 @@ export function commitOrder(p: CommitParams): { order: DorrOrder; jobId: string 
     commitmentHash: commitment,
     status: "committed",
     createdAt: new Date().toISOString(),
-    midnight: {},
   };
 
   acct.locked += p.marginUsd;
@@ -202,7 +196,8 @@ export function commitOrder(p: CommitParams): { order: DorrOrder; jobId: string 
 /**
  * Step 2 — EXECUTE. Reveal already happened server-side (operator is the
  * trusted executor in v1): verify commitment, fill on the vAMM, open the
- * position. Matching attestation (ZK) runs async.
+ * position. The reveal→verify gate refuses any preimage that doesn't rehash to
+ * the published commitment.
  */
 export function executeOrder(orderId: string): { position: DorrPosition; jobId: string } {
   const st = getState();
@@ -228,7 +223,7 @@ export function executeOrder(orderId: string): { position: DorrPosition; jobId: 
   }
 
   // Oracle-divergence guard: refuse to fill when the vAMM mark has drifted too
-  // far from the Pyth index (venue manipulation / stalled recenter). The pool
+  // far from the FTSO index (venue manipulation / stalled recenter). The pool
   // normally tracks the oracle within a few bps, so a large gap is anomalous.
   const mark = vamm.markPrice(order.marketId);
   const idx = getPrice(marketById(order.marketId)!.feedId)?.price;

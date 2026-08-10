@@ -3,8 +3,6 @@
  * FAILS on dorr), selective disclosure (open a hidden position to an auditor,
  * verifiable against the on-chain commitment), and the activity log.
  */
-process.env.DORR_ZK_MODE = "stub";
-process.env.DORR_TEST = "1";
 
 import { test, expect, beforeAll } from "bun:test";
 

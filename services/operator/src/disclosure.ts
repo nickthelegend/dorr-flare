@@ -5,9 +5,9 @@
  * stay hidden. When you *choose* to prove your position to an auditor or
  * counterparty, you hand them a disclosure: the revealed fields + the nonce.
  * They recompute the hash and check it equals the on-chain commitment — proving
- * exactly what you traded, WITHOUT the public ever seeing it. This is Midnight's
- * thesis (rational privacy) applied to a perp: opening a commitment to a chosen
- * party, verifiable against the value already committed on-chain.
+ * exactly what you traded, WITHOUT the public ever seeing it: rational privacy
+ * applied to a perp — opening a commitment to a chosen party, verifiable against
+ * the value already committed on-chain.
  */
 import { orderCommitmentHex, type OrderCommitmentInput } from "@dorr/engine/order/commitment";
 import { getState } from "./state.js";
@@ -18,7 +18,7 @@ export interface Disclosure {
   subject: "order";
   orderId: string;
   audience: string;
-  /** the value published on Midnight (and mirrored in the Cardano anchor). */
+  /** the commitment published for this order (and recorded in the on-chain batch). */
   commitment: string;
   /** the opened preimage — share ONLY with the intended auditor. */
   revealed: OrderCommitmentInput;

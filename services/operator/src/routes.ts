@@ -363,10 +363,20 @@ app.post("/positions/:id/margin", async (c) => {
 app.post("/positions/:id/stops", async (c) => {
   const id = c.req.param("id");
   const body = await c.req.json().catch(() => ({}));
+  // A request that names neither field would otherwise return success while
+  // changing nothing — reject it so a misspelled param is visible, not silent.
+  if (body.stopLoss === undefined && body.takeProfit === undefined) {
+    return bad(c, "send stopLoss and/or takeProfit (a number to set, null to clear)");
+  }
   const stops = {
     stopLoss: body.stopLoss === null ? null : body.stopLoss != null ? Number(body.stopLoss) : undefined,
     takeProfit: body.takeProfit === null ? null : body.takeProfit != null ? Number(body.takeProfit) : undefined,
   };
+  for (const [k, v] of Object.entries(stops)) {
+    if (v !== null && v !== undefined && !(Number.isFinite(v) && v > 0)) {
+      return bad(c, `${k} must be a positive price, or null to clear`);
+    }
+  }
   const owner = getState().positions.find((x) => x.id === id)?.address;
   const authErr = checkAuth("stops", { positionId: id, ...stops }, body, owner);
   if (authErr) return bad(c, authErr, 401);

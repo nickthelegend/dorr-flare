@@ -4,8 +4,6 @@
  * → settlement decrypts (round permitting), clears at ONE uniform price, and
  * opens a position each. Margin accounting + commitment binding are asserted.
  */
-process.env.DORR_ZK_MODE = "stub";
-process.env.DORR_TEST = "1";
 
 import { test, expect, beforeAll } from "bun:test";
 import { randomBytes } from "node:crypto";

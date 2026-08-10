@@ -9,7 +9,7 @@ export const MAINTENANCE_MARGIN = 0.05;
 export const FUNDING_DAMPENING = 0.125;
 export const FUNDING_CAP = 0.0075;
 /**
- * Max tolerated gap between the vAMM mark and the Pyth index before an execution
+ * Max tolerated gap between the vAMM mark and the FTSO index before an execution
  * is refused. The pool auto-recenters to within a few bps of the oracle, so a
  * large gap means the venue price is being manipulated (or recenter is stalled)
  * — filling there would hand a taker a mispriced entry. Guards executeOrder.
