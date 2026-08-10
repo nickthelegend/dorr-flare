@@ -200,13 +200,15 @@ export function AttackLabBody() {
     clearTimers();
     setPubRevealed(0);
     setPrivRevealed(0);
-    // Rescale each run's raw ms range onto the PLAY_MS window so both timelines
-    // finish together and the reveal always feels live regardless of the data.
+    // The run has ALREADY happened on the server — real fills on the live vAMM and
+    // 25,000 real SHA-256 guesses, both of which complete in milliseconds. Replaying
+    // those durations would flash the whole timeline instantly, so the reveal is
+    // staggered evenly for legibility. This is presentation only: the elapsed times
+    // shown in the steps are the measured ones, not these.
     const schedule = (steps: AttackStep[], set: (n: number) => void) => {
-      const maxMs = Math.max(1, ...steps.map((s) => s.ms));
-      steps.forEach((s, i) => {
-        const delay = (s.ms / maxMs) * PLAY_MS;
-        timers.current.push(setTimeout(() => set(i + 1), delay));
+      const gap = PLAY_MS / Math.max(1, steps.length);
+      steps.forEach((_, i) => {
+        timers.current.push(setTimeout(() => set(i + 1), gap * (i + 1)));
       });
     };
     schedule(res.publicRun.steps, setPubRevealed);
@@ -257,6 +259,9 @@ export function AttackLabBody() {
           <MarketIcon base={base} size={14} />
           Same {formatUsd(1000, 0)} FXRP · 10x {side} on {symbol}. A front-running bot attacks it on a
           transparent DEX, then tries the same on dorr.
+        </p>
+        <p className="text-[10px] text-muted-foreground/80">
+          Real fills on the live vAMM — reserves are restored afterwards, so no open position moves.
         </p>
       </div>
 
@@ -411,7 +416,12 @@ export function AttackLabBody() {
                 {result.privateRun.bruteForceAttempts.toLocaleString()}
               </span>
               <span className="text-[11px] text-muted-foreground">
-                commitment cracks — the 128-bit nonce makes the search space 2¹²⁸ (infeasible)
+                commitment cracks in{" "}
+                <span className="font-mono text-foreground/90">{result.privateRun.bruteForceMs}ms</span>{" "}
+                (<span className="font-mono text-foreground/90">
+                  {result.privateRun.bruteForceRatePerSec.toLocaleString()}/s
+                </span>
+                ) — the 128-bit nonce makes the search space 2¹²⁸ (infeasible)
               </span>
             </div>
             <div className="font-mono text-[10px] text-muted-foreground break-all">
@@ -553,6 +563,10 @@ export function BatchAuctionBody() {
                 clears @ {result.epoch.clearingPrice.toFixed(6)}
               </Badge>
             </div>
+            <p className="text-[10px] text-muted-foreground/80 leading-snug">
+              A batch needs more than one order to have a clearing price, so the counterparties here
+              are constructed. The clearing itself is the production function the live keeper runs.
+            </p>
             <div className="space-y-1">
               {result.epoch.orders.map((o, i) => (
                 <div key={i} className="flex items-center justify-between gap-2 text-[11px] font-mono tabular-nums">
@@ -668,6 +682,10 @@ export function SealedBidBody() {
               </span>
               <span className="font-mono text-sm text-foreground">{result.epoch.clearingPrice.toFixed(6)}</span>
             </div>
+            <p className="text-[10px] text-muted-foreground/80 leading-snug">
+              Counterparties are constructed so the epoch has something to clear against — but each was
+              sealed with the real timelock and opened by the real settlement path.
+            </p>
             <div className="grid grid-cols-2 gap-1.5">
               {result.epoch.orders.map((o, i) => (
                 <div key={i} className="flex items-center justify-between rounded border border-border/60 bg-muted/20 px-2 py-1 text-[10px] font-mono">

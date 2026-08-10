@@ -16,7 +16,7 @@ export function formatUsd(value: number | null | undefined, digits?: number): st
   });
 }
 
-/** Truncate a bech32 (or any long) address: addr_test1qz…x0f2 */
+/** Truncate an address for display: 0x0b6A564E9d…010B12 */
 export function truncateAddress(addr: string | null | undefined, head = 12, tail = 6): string {
   if (!addr) return "";
   if (addr.length <= head + tail + 1) return addr;

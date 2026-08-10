@@ -67,7 +67,7 @@ bun run --cwd services/operator start   # :8791
 bun run --cwd apps/web dev              # :3000
 ```
 
-Connect MetaMask on **Flare Coston2** (chain `114`) → claim test FXRP from [Flare's faucet](https://faucet.flare.network/coston2) → deposit from the Collateral panel → trade. dorr holds no minting authority over FXRP; collateral is a real asset the vault custodies non-custodially.
+Connect MetaMask on **Flare Coston2** (chain `114`) → claim test FXRP from [Flare's faucet](https://faucet.flare.network/coston2) → deposit from the Collateral panel → trade. The chart is drawn from the operator's own FTSO v2 samples, so its history grows as the operator runs (and persists across restarts) — there is no third-party price API in the loop. dorr holds no minting authority over FXRP; collateral is a real asset the vault custodies non-custodially.
 
 ## Architecture
 

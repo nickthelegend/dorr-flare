@@ -240,6 +240,15 @@ export interface SealedDemoResult {
  * cannot open it now); a parallel batch sealed to a past round is opened + cleared
  * so the demo completes instantly without waiting an epoch.
  */
+/**
+ * Deterministic 0x identities for the demo epoch's counterparties. These are
+ * illustrative participants — a batch auction needs more than one order to show
+ * a uniform price — but everything done TO them is production code: each is
+ * sealed with the real tlock and cleared by the real `settleSealedEpoch`.
+ */
+const demoAddress = (i: number): string =>
+  "0x" + createHash("sha256").update(`dorr:demo-counterparty:${i}`).digest("hex").slice(0, 40);
+
 export async function runSealedDemo(p: {
   marketId: string;
   side?: "LONG" | "SHORT";
@@ -284,7 +293,7 @@ export async function runSealedDemo(p: {
   const seals: SealedInput[] = [];
   for (let i = 0; i < epochPreimages.length; i++) {
     const pi = epochPreimages[i].p;
-    seals.push({ id: `d${i}`, address: `addr_test1sealdemo${i}`, marketId: p.marketId, commitment: commitmentFor(pi), ciphertext: await sealOrder(pi, pastRound), targetRound: pastRound });
+    seals.push({ id: `d${i}`, address: demoAddress(i), marketId: p.marketId, commitment: commitmentFor(pi), ciphertext: await sealOrder(pi, pastRound), targetRound: pastRound });
   }
   const settled = await settleSealedEpoch(p.marketId, seals, { base: pool.virtualBase, quote: pool.virtualQuote, k: pool.k });
   const clearingPrice = settled.clearing?.clearingPrice ?? idx.price;

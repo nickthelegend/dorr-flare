@@ -251,6 +251,9 @@ export interface AttackLab {
     commitmentHash: string;
     bruteForceAttempts: number;
     bruteForceMatches: number;
+    /** Wall-clock the brute-force actually took on the server, and its rate. */
+    bruteForceMs: number;
+    bruteForceRatePerSec: number;
     victimEntry: number;
     outcome: "ATTACK FAILED";
   };

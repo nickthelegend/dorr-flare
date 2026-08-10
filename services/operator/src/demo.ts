@@ -1,9 +1,15 @@
 /**
- * A/B anti-front-running demo — the money shot, made deterministic.
+ * A/B anti-front-running demo — the money shot.
  *
- * Runs the SAME order two ways on a scratch clone of the live vAMM (no funds,
- * no real trades touched), and shows the only thing that differs: whether a
+ * Runs the SAME order two ways and shows the only thing that differs: whether a
  * sandwich bot could SEE the order.
+ *
+ * The Attack Lab runs `mode: "live"` — the bot's front-run, the victim's fill and
+ * the back-run are REAL fills that move the REAL vAMM. Recenter is paused for the
+ * sequence and reserves are restored exactly afterwards, so no real position is
+ * affected (asserted in features-v2). `mode: "sim"` runs the identical math on a
+ * scratch clone; it exists for the pre-trade slippage preview, where a rejected
+ * fill must not perturb the pool.
  *
  *   public  → order details are in the public feed BEFORE execution, so the bot
  *             front-runs (buys ahead), the victim fills at a worse price, and the
@@ -83,11 +89,12 @@ export interface AbParams {
   /** Bot aggression as a fraction of the victim's size (default 1.5x). */
   botMultiple?: number;
   /**
-   * "sim" (default): deterministic scratch-clone of the live pool — reproducible,
-   * leaves the live pool untouched. "live": run a REAL sandwich on the live vAMM
-   * (pause recenter, real fills, restore) — proves the MEV property on the real
-   * engine. Private baseline is the counterfactual (you can't fill the same
-   * victim order twice on one pool).
+   * "live" (what both demo surfaces use): a REAL sandwich on the live vAMM —
+   * pause recenter, real fills, restore reserves — proving the MEV property on
+   * the real engine. "sim" runs the identical math on a scratch clone; it stays
+   * available for callers that must not perturb the pool at all. In both cases
+   * the private baseline is the counterfactual, since you cannot fill the same
+   * victim order twice on one pool.
    */
   mode?: "sim" | "live";
 }
@@ -203,6 +210,12 @@ function assembleResult(
 
 // ─── MEV attack lab: run a sandwich, watch it FAIL on dorr ───────────────────
 export interface AttackStep {
+  /**
+   * REAL elapsed milliseconds from the start of the run to the end of this step —
+   * measured, not authored. The vAMM legs land in well under a millisecond and
+   * the brute-force dominates; that asymmetry is the point, so the client staggers
+   * the reveal for legibility rather than replaying these as delays.
+   */
   ms: number;
   actor: "bot" | "victim" | "chain" | "dorr";
   ok: boolean; // true = step advances the attack; false = attack blocked/aborted
@@ -228,6 +241,9 @@ export interface AttackLabResult {
     commitmentHash: string;
     bruteForceAttempts: number;
     bruteForceMatches: number;
+    /** Wall-clock the brute-force actually took, and the rate it achieved. */
+    bruteForceMs: number;
+    bruteForceRatePerSec: number;
     victimEntry: number;
     outcome: "ATTACK FAILED";
   };
@@ -243,7 +259,13 @@ export interface AttackLabResult {
 export function runAttackLab(p: AbParams): AttackLabResult {
   const m = marketById(p.marketId);
   if (!m) throw new Error(`unknown market ${p.marketId}`);
-  const ab = runAbDemo({ ...p, mode: "sim" }); // reuse the vAMM sandwich math
+  const t0 = Date.now();
+  // A REAL sandwich against the live vAMM — the bot's front-run, the victim's
+  // fill and the back-run are actual fills that move the actual pool. Recenter
+  // is paused for the sequence and the reserves are restored byte-for-byte
+  // afterwards, so no real trader is affected (asserted by features-v2).
+  const ab = runAbDemo({ ...p, mode: "live" });
+  const sandwichMs = Date.now() - t0;
   const idx = ab.indexPrice;
   const sizeStr = ab.victim.sizeBase.toFixed(2);
 
@@ -257,11 +279,11 @@ export function runAttackLab(p: AbParams): AttackLabResult {
   const publicRun = {
     steps: [
       { ms: 0, actor: "bot", ok: true, text: "🤖 Sandwich bot scanning the public mempool / order flow…" },
-      { ms: 320, actor: "bot", ok: true, text: `👁️ Order spotted IN THE CLEAR: ${p.side} ${sizeStr} ${m.base} · ${p.leverage}x — full details visible` },
-      { ms: 640, actor: "bot", ok: true, text: `⚡ FRONT-RUN: bot buys ahead, pushing the mark to ${ab.public.botFrontRunPrice.toFixed(6)}` },
-      { ms: 980, actor: "victim", ok: true, text: `🎯 Victim's order executes at ${ab.public.victimEntry.toFixed(6)} — worse than fair (${idx.toFixed(6)})` },
-      { ms: 1300, actor: "bot", ok: true, text: `💰 BACK-RUN: bot unwinds at ${ab.public.botExitPrice.toFixed(6)}, pocketing $${ab.public.botProfitUsd.toFixed(2)}` },
-      { ms: 1600, actor: "victim", ok: false, text: `✗ SANDWICHED — victim overpaid $${ab.public.victimExtraCostUsd.toFixed(2)} (${ab.public.victimSlippageBps.toFixed(1)} bps)` },
+      { ms: 0, actor: "bot", ok: true, text: `👁️ Order spotted IN THE CLEAR: ${p.side} ${sizeStr} ${m.base} · ${p.leverage}x — full details visible` },
+      { ms: sandwichMs, actor: "bot", ok: true, text: `⚡ FRONT-RUN: bot buys ahead, pushing the mark to ${ab.public.botFrontRunPrice.toFixed(6)}` },
+      { ms: sandwichMs, actor: "victim", ok: true, text: `🎯 Victim's order executes at ${ab.public.victimEntry.toFixed(6)} — worse than fair (${idx.toFixed(6)})` },
+      { ms: sandwichMs, actor: "bot", ok: true, text: `💰 BACK-RUN: bot unwinds at ${ab.public.botExitPrice.toFixed(6)}, pocketing $${ab.public.botProfitUsd.toFixed(2)}` },
+      { ms: sandwichMs, actor: "victim", ok: false, text: `✗ SANDWICHED — victim overpaid $${ab.public.victimExtraCostUsd.toFixed(2)} (${ab.public.victimSlippageBps.toFixed(1)} bps)` },
     ] as AttackStep[],
     victimEntry: ab.public.victimEntry,
     victimExtraCostUsd: ab.public.victimExtraCostUsd,
@@ -271,6 +293,7 @@ export function runAttackLab(p: AbParams): AttackLabResult {
   };
 
   // The bot tries to crack the commitment: REAL SHA-256 guesses, guaranteed to fail.
+  const bfStart = Date.now();
   const bruteForceAttempts = 25_000;
   let bruteForceMatches = 0;
   const sides: Array<"LONG" | "SHORT"> = ["LONG", "SHORT"];
@@ -287,19 +310,28 @@ export function runAttackLab(p: AbParams): AttackLabResult {
     if (guess === commitment) bruteForceMatches++;
   }
 
+  const bruteForceMs = Date.now() - bfStart;
+  const rate = bruteForceMs > 0 ? Math.round(bruteForceAttempts / (bruteForceMs / 1000)) : bruteForceAttempts;
+  // At this measured rate, exhausting a 128-bit nonce space is ~2^128 / rate
+  // seconds. Expressed in years it is a number with ~24 digits — quote the
+  // exponent rather than a figure nobody can hold.
+  const yearsToExhaust = Math.log10(Math.pow(2, 128) / rate / 31_557_600);
+
   const privateRun = {
     steps: [
       { ms: 0, actor: "bot", ok: true, text: "🤖 Sandwich bot scanning the public mempool / order flow…" },
-      { ms: 320, actor: "dorr", ok: false, text: `🔒 Only the commitment is public: ${commitment.slice(0, 18)}… — no side, size, price, or leverage` },
-      { ms: 700, actor: "bot", ok: false, text: `🔓 Bot attempts to crack the commitment — ${bruteForceAttempts.toLocaleString()} SHA-256 preimage guesses…` },
-      { ms: 1500, actor: "dorr", ok: false, text: `❌ ${bruteForceMatches} / ${bruteForceAttempts.toLocaleString()} matches — the 128-bit nonce makes the search space 2¹²⁸ (infeasible)` },
-      { ms: 1800, actor: "bot", ok: false, text: "❓ Bot has no direction, no size — a sandwich cannot even be constructed" },
-      { ms: 2100, actor: "bot", ok: false, text: "🛑 ATTACK ABORTED — there is nothing to front-run" },
-      { ms: 2400, actor: "victim", ok: true, text: `✓ Victim fills at the fair price ${ab.private.victimEntry.toFixed(6)} — bot profit $0.00` },
+      { ms: 0, actor: "dorr", ok: false, text: `🔒 Only the commitment is public: ${commitment.slice(0, 18)}… — no side, size, price, or leverage` },
+      { ms: 0, actor: "bot", ok: false, text: `🔓 Bot attempts to crack the commitment — ${bruteForceAttempts.toLocaleString()} SHA-256 preimage guesses…` },
+      { ms: bruteForceMs, actor: "dorr", ok: false, text: `❌ ${bruteForceMatches} / ${bruteForceAttempts.toLocaleString()} matches in ${bruteForceMs}ms (${rate.toLocaleString()}/s) — at that rate the 2¹²⁸ nonce space takes ~10^${yearsToExhaust.toFixed(0)} years` },
+      { ms: bruteForceMs, actor: "bot", ok: false, text: "❓ Bot has no direction, no size — a sandwich cannot even be constructed" },
+      { ms: bruteForceMs, actor: "bot", ok: false, text: "🛑 ATTACK ABORTED — there is nothing to front-run" },
+      { ms: bruteForceMs, actor: "victim", ok: true, text: `✓ Victim fills at the fair price ${ab.private.victimEntry.toFixed(6)} — bot profit $0.00` },
     ] as AttackStep[],
     commitmentHash: commitment,
     bruteForceAttempts,
     bruteForceMatches,
+    bruteForceMs,
+    bruteForceRatePerSec: rate,
     victimEntry: ab.private.victimEntry,
     outcome: "ATTACK FAILED" as const,
   };

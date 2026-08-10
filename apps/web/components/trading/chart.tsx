@@ -43,58 +43,46 @@ interface Candle {
 /** Per-(market, bucket) candle accumulators shared across market/timeframe switches. */
 type CandleStore = Map<string, Candle[]>;
 
-/**
- * Pyth benchmarks TradingView shim resolution for a dorr bucket. The shim has no
- * sub-minute bars, so 5s/15s seed from 1-minute history (then append live ticks).
- */
-function shimResolution(bucketSec: number): string {
-  if (bucketSec >= 300) return "5";
-  if (bucketSec >= 60) return "1";
-  return "1"; // 5s / 15s → seed from 1m bars so the chart isn't empty
-}
-
 /** How far back to seed, in seconds, per bucket (bigger buckets → longer history). */
 function backfillWindowSec(bucketSec: number): number {
   if (bucketSec >= 300) return 24 * 3600; // 5m bars over ~24h
   if (bucketSec >= 60) return 6 * 3600; // 1m bars over ~6h
-  return 2 * 3600; // sub-minute: last ~2h of 1m bars
+  return 2 * 3600; // sub-minute: last ~2h
 }
 
 /**
- * Fetch prior candles from Pyth's public TradingView shim (no key). Returns
- * ascending Candle[] or [] on any failure — the caller falls back to live-only.
+ * Seed prior candles from the operator's own FTSO v2 history — the same feed that
+ * prices fills and that `DorrBatchSettlement` re-reads on-chain, so the chart and
+ * the settlement layer can never disagree. The operator stores 1-minute bars and
+ * aggregates them to the requested bucket; sub-minute views seed from 1m and then
+ * extend with live ticks. Returns [] on any failure and the caller falls back to
+ * live-only rather than reaching for a third-party price API.
  */
-async function fetchBackfill(base: string, bucketSec: number, signal: AbortSignal): Promise<Candle[]> {
-  const to = Math.floor(Date.now() / 1000);
-  const from = to - backfillWindowSec(bucketSec);
-  const resolution = shimResolution(bucketSec);
-  const url =
-    `https://benchmarks.pyth.network/v1/shims/tradingview/history` +
-    `?symbol=${encodeURIComponent(`Crypto.${base}/USD`)}` +
-    `&resolution=${resolution}&from=${from}&to=${to}`;
-  const res = await fetch(url, { signal, cache: "no-store" });
-  if (!res.ok) throw new Error(`shim HTTP ${res.status}`);
+async function fetchBackfill(marketId: string, bucketSec: number, signal: AbortSignal): Promise<Candle[]> {
+  const requested = Math.max(60, bucketSec);
+  const limit = Math.ceil(backfillWindowSec(bucketSec) / requested) + 2;
+  const base = (process.env.NEXT_PUBLIC_OPERATOR_URL || "http://localhost:8791").replace(/\/$/, "");
+  const res = await fetch(
+    `${base}/markets/${encodeURIComponent(marketId)}/candles?bucketSec=${requested}&limit=${limit}`,
+    { signal, cache: "no-store" },
+  );
+  if (!res.ok) throw new Error(`candles HTTP ${res.status}`);
   const j = (await res.json()) as {
-    s?: string;
-    t?: number[];
-    o?: number[];
-    h?: number[];
-    l?: number[];
-    c?: number[];
+    candles?: Array<{ t: number; o: number; h: number; l: number; c: number }>;
   };
-  if (j.s !== "ok" || !j.t?.length) return [];
+  const rows = j.candles ?? [];
   const out: Candle[] = [];
   let prevTime = -1;
-  for (let i = 0; i < j.t.length; i++) {
-    const time = Math.floor(j.t[i]) as UTCTimestamp;
-    const close = Number(j.c?.[i]);
+  for (const r of rows) {
+    const time = Math.floor(r.t) as UTCTimestamp;
+    const close = Number(r.c);
     if (!(close > 0) || time <= prevTime) continue; // strictly increasing, valid
     prevTime = time;
     out.push({
       time,
-      open: Number(j.o?.[i]) || close,
-      high: Number(j.h?.[i]) || close,
-      low: Number(j.l?.[i]) || close,
+      open: Number(r.o) || close,
+      high: Number(r.h) || close,
+      low: Number(r.l) || close,
       close,
     });
   }
@@ -179,8 +167,9 @@ export default function TradingChart() {
     };
   }, []);
 
-  // Seed prior candles from Pyth's public shim on market/timeframe change, then
-  // let live ticks append. Fails soft: on any error we keep live-only behaviour.
+  // Seed prior candles from the operator's FTSO history on market/timeframe
+  // change, then let live ticks append. Fails soft: on any error we keep
+  // live-only behaviour.
   // NB: mark the key done ONLY on success — marking eagerly meant React StrictMode's
   // dev mount→cleanup→remount aborted the in-flight fetch and the remount bailed on
   // the already-marked key, so history never loaded.
@@ -194,7 +183,7 @@ export default function TradingChart() {
     const ctrl = new AbortController();
     (async () => {
       try {
-        const history = await fetchBackfill(base, bucketSec, ctrl.signal);
+        const history = await fetchBackfill(selectedMarketId, bucketSec, ctrl.signal);
         if (cancelled || history.length === 0) return;
         backfilledRef.current.add(key); // mark done only once history is in hand
         const existing = candlesRef.current.get(key) ?? [];

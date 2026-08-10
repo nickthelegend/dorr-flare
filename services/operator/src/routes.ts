@@ -78,6 +78,41 @@ app.get("/markets", (c) => {
   return c.json({ markets: out });
 });
 
+/**
+ * OHLC history for a market, built from the FTSO v2 samples this operator read.
+ *
+ * The chart draws the same feed that prices fills and that DorrBatchSettlement
+ * re-reads on-chain — there is no third-party price API in the loop. Stored as
+ * 1-minute bars and aggregated up to whatever bucket the client asks for.
+ */
+app.get("/markets/:id/candles", (c) => {
+  const id = c.req.param("id");
+  if (!marketById(id)) return bad(c, `unknown market ${id}`, 404);
+  const bucketSec = Math.max(60, Math.min(86_400, Number(c.req.query("bucketSec") || 60)));
+  const limit = Math.max(1, Math.min(2_000, Number(c.req.query("limit") || 500)));
+
+  const minutes = getState().candles[id] ?? [];
+  if (bucketSec === 60) {
+    return c.json({ marketId: id, bucketSec, source: "ftso-v2", candles: minutes.slice(-limit) });
+  }
+
+  // Aggregate 1m bars into the requested bucket: first open, max high, min low,
+  // last close — the same fold the client would do, done once here.
+  const out: Array<{ t: number; o: number; h: number; l: number; c: number }> = [];
+  for (const m of minutes) {
+    const t = Math.floor(m.t / bucketSec) * bucketSec;
+    const last = out[out.length - 1];
+    if (last && last.t === t) {
+      last.h = Math.max(last.h, m.h);
+      last.l = Math.min(last.l, m.l);
+      last.c = m.c;
+    } else {
+      out.push({ t, o: m.o, h: m.h, l: m.l, c: m.c });
+    }
+  }
+  return c.json({ marketId: id, bucketSec, source: "ftso-v2", candles: out.slice(-limit) });
+});
+
 // ─── vault / collateral ──────────────────────────────────────────────────────
 app.get("/vault/info", async (c) => {
   if (flareConfigured()) {
@@ -511,7 +546,10 @@ app.post("/demo/ab", async (c) => {
       marginUsd: Number(body.marginUsd || 1000),
       leverage: Number(body.leverage || 10),
       botMultiple: body.botMultiple ? Number(body.botMultiple) : undefined,
-      mode: body.mode === "live" ? "live" : "sim",
+      // Real fills on the live vAMM by default — the reserves are snapshotted and
+      // restored, so the demo costs no one anything. `mode: "sim"` is an explicit
+      // opt-in for a deterministic scratch-clone run.
+      mode: body.mode === "sim" ? "sim" : "live",
     });
     return c.json(result);
   } catch (e) {

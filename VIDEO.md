@@ -17,6 +17,10 @@ bun run --cwd services/operator start   # :8791 — wait for the six "feed ok" l
 bun run --cwd apps/web dev              # :3000
 ```
 
+- **Start the operator at least 30–60 minutes before you record.** The chart is
+  drawn from the operator's own FTSO v2 samples — the same feed that prices fills
+  — so its history is exactly as long as the operator has been running. History
+  persists across restarts, so once it's warm it stays warm.
 - MetaMask on **Coston2** (chain 114), holding C2FLR for gas and FXRP for margin.
 - **Deposit before you record.** Don't burn 20 seconds of video on a confirmation.
 - Browser at **1440×900**, dark theme, zoom 100%. Close every other tab.

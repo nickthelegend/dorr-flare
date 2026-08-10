@@ -16,6 +16,7 @@
 import { createPublicClient, http, type Address, type PublicClient } from "viem";
 import { env } from "./env.js";
 import { MARKETS } from "./markets.js";
+import { recordPriceSample } from "./state.js";
 
 /** Flare's ContractRegistry — the same address on every Flare network. */
 export const CONTRACT_REGISTRY: Address = "0xaD67FE66660Fb8dFE9d6b1b4240d8650e30F6019";
@@ -114,7 +115,11 @@ export async function pollOnce(): Promise<void> {
   await Promise.all(
     feeds.map(async (m) => {
       try {
-        latest.set(norm(m.feedId), await readFeed(m.feedId));
+        const p = await readFeed(m.feedId);
+        latest.set(norm(m.feedId), p);
+        // Fold the sample into the market's own OHLC history, so the chart is
+        // drawn from the same oracle that prices fills — not a third-party API.
+        recordPriceSample(m.id, p.price, p.fetchedAt);
       } catch (e) {
         console.error(`[ftso] read failed for ${m.symbol}: ${String(e).slice(0, 140)}`);
       }

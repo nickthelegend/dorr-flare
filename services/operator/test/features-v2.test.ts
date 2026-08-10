@@ -329,3 +329,41 @@ test("FUNDING: the tick accrues on open positions and records history", async ()
   const flr = stats.markets.find((m: any) => m.id === FLR);
   expect(flr.fundingRateHourly).toBeGreaterThan(0);
 });
+
+// ─── attack lab runs for real ────────────────────────────────────────────────
+test("ATTACK LAB: the sandwich is a REAL fill sequence that restores the pool exactly", async () => {
+  setPrice(0.15);
+  const before = (await j(await get("/markets"))).markets.find((m: any) => m.id === FLR).markPrice;
+
+  const lab = await j(await post("/demo/attack", {
+    marketId: FLR, side: "LONG", marginUsd: 1_000, leverage: 10,
+  }));
+
+  // The bot really profited off the victim on the live curve.
+  expect(lab.publicRun.botProfitUsd).toBeGreaterThan(0);
+  expect(lab.publicRun.victimExtraCostUsd).toBeGreaterThan(0);
+  expect(lab.publicRun.victimEntry).toBeGreaterThan(lab.privateRun.victimEntry);
+
+  // …and the live pool is byte-for-byte where it started: no real trader moved.
+  const after = (await j(await get("/markets"))).markets.find((m: any) => m.id === FLR).markPrice;
+  expect(after).toBeCloseTo(before, 10);
+});
+
+test("ATTACK LAB: the brute-force is real work, not a constant", async () => {
+  setPrice(0.15);
+  const lab = await j(await post("/demo/attack", {
+    marketId: FLR, side: "LONG", marginUsd: 1_000, leverage: 10,
+  }));
+
+  expect(lab.privateRun.bruteForceAttempts).toBe(25_000);
+  expect(lab.privateRun.bruteForceMatches).toBe(0);
+  // Measured, not authored: 25k SHA-256 commitments cannot take zero time.
+  expect(lab.privateRun.bruteForceMs).toBeGreaterThan(0);
+  expect(lab.privateRun.bruteForceRatePerSec).toBeGreaterThan(0);
+
+  // Two runs commit to different nonces, so the hash differs every time.
+  const again = await j(await post("/demo/attack", {
+    marketId: FLR, side: "LONG", marginUsd: 1_000, leverage: 10,
+  }));
+  expect(again.privateRun.commitmentHash).not.toBe(lab.privateRun.commitmentHash);
+});

@@ -171,6 +171,13 @@ export interface StateFile {
   anchors: Array<{ settlementId: string; txHash: string; commitmentHex: string; at: string }>;
   insuranceFundUsd: number;
   fundingHistory: Array<{ marketId: string; rate: number; markPrice: number; indexPrice: number; at: string }>;
+  /**
+   * 1-minute OHLC built from the FTSO v2 samples this operator actually read,
+   * keyed by marketId. This is what the chart draws: the same feed that prices
+   * fills and that the settlement contract re-reads — not a third-party price
+   * API. Persisted so history survives a restart; trimmed to CANDLE_CAP.
+   */
+  candles: Record<string, Array<{ t: number; o: number; h: number; l: number; c: number }>>;
 }
 
 const DATA_DIR = resolve(DORR_ROOT, "services/operator/data");
@@ -198,7 +205,31 @@ const empty = (): StateFile => ({
   anchors: [],
   insuranceFundUsd: 0,
   fundingHistory: [],
+  candles: {},
 });
+
+/** Keep ~24h of 1-minute bars per market. */
+const CANDLE_CAP = 1_440;
+
+/**
+ * Fold an FTSO sample into the market's 1-minute OHLC series. Called on every
+ * poll; opens a new bar when the minute rolls over, otherwise extends the
+ * current one. Cheap enough to run per-tick and the only source the chart needs.
+ */
+export function recordPriceSample(marketId: string, price: number, atMs: number): void {
+  if (!Number.isFinite(price) || price <= 0) return;
+  const minute = Math.floor(atMs / 60_000) * 60; // bar time, seconds
+  const series = (state.candles[marketId] ??= []);
+  const last = series[series.length - 1];
+  if (last && last.t === minute) {
+    last.h = Math.max(last.h, price);
+    last.l = Math.min(last.l, price);
+    last.c = price;
+    return;
+  }
+  series.push({ t: minute, o: price, h: price, l: price, c: price });
+  if (series.length > CANDLE_CAP) series.splice(0, series.length - CANDLE_CAP);
+}
 
 let state: StateFile = empty();
 
