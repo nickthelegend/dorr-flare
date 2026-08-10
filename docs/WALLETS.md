@@ -2,47 +2,43 @@
 
 ## TL;DR
 
-dorr's frontend connects to **any CIP-30 Cardano wallet, set to Preprod**. Use **Lace** (the Cardano + Midnight reference wallet) or **Eternl** (smoothest for testnet dev). You do **not** need a Midnight browser wallet — see [below](#do-i-need-a-midnight-wallet).
+dorr connects to **any EIP-1193 EVM wallet on Flare Coston2** (chain id `114`). Use **MetaMask** or **Rabby**. Margin is **FXRP**, a real ERC-20 on Coston2 — dorr cannot mint it, so test collateral comes from Flare's own faucet.
 
 ## Supported wallets
 
-The connect flow uses Mesh (`BrowserWallet.getAvailableWallets()`), so **anything CIP-30 that's installed shows up**. Each trade action is signed with the wallet's `signData` (CIP-30 data signature).
+The connect flow talks to `window.ethereum` directly, so **any injected EVM wallet works**. Each value-moving action is signed with **EIP-191 `personal_sign`**, and the operator recovers the signer from the signature.
 
 | Wallet | Recommendation | Notes |
 |--------|----------------|-------|
-| **Lace** | ⭐ primary | IOG's wallet; the one that also supports **Midnight**, so it matches dorr's story end-to-end. Clean Preprod switch, reliable `signData`. |
-| **Eternl** | ⭐ best for dev/testing | Fastest testnet workflow, easy network toggle, great dApp connector, hardware-wallet support. My pick for iterating. |
-| **Nami** | ✅ | Now Lace-powered; CIP-30 + `signData` work. |
-| **Typhon** | ✅ | Full CIP-30, `signData`, good Plutus support. |
-| **Vespr** | ✅ | CIP-30; mobile-first but has an extension. |
-| **NuFi / Begin / Gero / Flint / Yoroi** | ✅ (varies) | Any CIP-30 with `signData`. Most work; a few older ones have quirky `signData`. |
+| **MetaMask** | ⭐ primary | The default. dorr offers to add/switch to Coston2 for you (`wallet_addEthereumChain`). |
+| **Rabby** | ⭐ best for dev | Clean network switching and a readable signature prompt. |
+| **Brave Wallet** | ✅ | Injects `window.ethereum`; note it can inject *after* page load — dorr keeps looking, so no reload needed. |
+| **Coinbase Wallet / OKX / Trust** | ✅ | Any injected EIP-1193 provider with `personal_sign`. |
 
-If nothing is installed, the connect dropdown shows install links — the app never crashes wallet-less.
+If nothing is installed, the app says so plainly and never crashes wallet-less.
 
 ## Setup in ~2 minutes
 
-1. **Install** Lace or Eternl (browser extension).
-2. **Switch to Preprod.** Lace: Settings → Network → Preprod. Eternl: the network dropdown → Preprod.
-3. **Get test ADA** (for tx fees — deposits/withdrawals are real preprod txs):
-   → https://docs.cardano.org/cardano-testnets/tools/faucet — pick **Preprod**, paste your wallet address, request. A couple of tADA is plenty.
-4. **Open dorr** (`http://localhost:3000`), click **Connect**, pick your wallet, approve.
-5. **Get dUSD** — hit the in-app **faucet** (mints test dUSD straight to your address; a real preprod mint tx).
-6. **Deposit** dUSD to the vault (your wallet signs + submits a real tx), then **trade**.
+1. **Install** MetaMask or Rabby (browser extension).
+2. **Open dorr** (`http://localhost:3000`) and click **Connect Wallet**.
+3. **Switch to Coston2.** If you're on the wrong network the navbar shows **Switch to Coston2** — one click adds and selects it. (Manual: chain id `114`, RPC `https://coston2-api.flare.network/ext/C/rpc`, explorer `https://coston2-explorer.flare.network`.)
+4. **Get C2FLR + FXRP** from **[Flare's Coston2 faucet](https://faucet.flare.network/coston2)** — it hands out gas (C2FLR) *and* test FXRP. The **Get FXRP** button in the Collateral panel opens it.
+5. **Deposit** FXRP into the vault from the Collateral panel. Your wallet signs an ERC-20 `approve` and then `DorrVault.deposit(uint256)` — two real transactions.
+6. **Trade.** Free margin appears as soon as the deposit confirms.
 
-## Do I need a Midnight wallet?
+## Why can't dorr just give me FXRP?
 
-**No — not in v1.** dorr's Midnight ZK proving runs **server-side** in the operator (it holds the Midnight wallet and drives the proof server). Your browser wallet only ever signs **Cardano** things: the vault deposit, the trade-authorization signatures, and the withdrawal.
-
-That's why **any CIP-30 Cardano wallet works**, and why **Lace is *recommended* but not *required*** — Lace is the natural choice because it's also the Midnight wallet, so it fits a future v2 where the trader proves in-browser. Today the operator proves on your behalf (it already sees your order to execute it, so no extra trust is given up).
+FXRP on Coston2 is a real asset and dorr holds no minting authority over it. An operator-side faucet would have to credit *unbacked* margin, which would break the vault's solvency invariant — so `/faucet` deliberately refuses and points you at Flare's faucet instead.
 
 ## No wallet? You can still demo
 
-- **Live prices + charts** for all 5 markets work with no wallet.
-- The **A/B sandwich showcase** (the money shot) runs with no wallet — it's a pure demonstration.
-- For a full trade without a real wallet, the operator has a `/demo/seed` endpoint (instant off-chain margin) — handy for local walkthroughs, though real deposits/settlement need a connected wallet.
+- **Live prices + charts** for all 6 markets work with no wallet.
+- The **Attack Lab** — sandwich attack, sealed-order refusal, batch auction, A/B comparison — runs entirely without a wallet. It's the money shot and needs nothing installed.
+- Panels that need an account show a plain "connect a wallet" state rather than empty boxes.
 
 ## Gotchas
 
-- **Wrong network** is the #1 issue — the wallet **must be on Preprod**, not Mainnet or Preview. Symptoms: address starts with `addr1…` (mainnet) instead of `addr_test1…`.
-- **No tADA** → the deposit tx fails at fee selection. Fund from the faucet first.
-- **`signData` prompts** — with secure mode (`DORR_AUTH=1`) the wallet asks you to sign each trade action. That's the point: only you can place your trade. In the default demo mode it won't prompt.
+- **Wrong network** is the #1 issue. dorr detects it, shows **Switch to Coston2** in the navbar, and a deposit/withdraw attempt offers to switch for you rather than failing with a chain-id error.
+- **No C2FLR** → the approve/deposit transaction can't pay gas. The Flare faucet gives you both C2FLR and FXRP in one request.
+- **Signature prompts** — with `DORR_AUTH=1` the wallet asks you to sign each trade action. That's the point: only you can place your trade. The default demo mode doesn't enforce it.
+- **Withdrawals are yours alone.** `DorrVault.withdraw()` pays `msg.sender`, so the withdrawal is signed by your wallet and the operator is not involved. There is no operator-routed withdrawal path.

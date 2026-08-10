@@ -86,7 +86,7 @@ Also: design rationale in [DESIGN.md](./DESIGN.md) · stage script in [DEMO.md](
 
 ## Testing
 
-**87 operator tests + 22 Solidity tests**, all green. Coverage includes the sealed-bid timelock path against **live drand**, uniform-price batch clearing, selective disclosure (including re-opening a sealed order's ciphertext), EIP-191 auth against real keys, the FTSO drift guard, TEE attestation binding, and a `DorrVault` fuzz run asserting a withdrawal can never exceed free balance. See [docs/TESTING.md](./docs/TESTING.md).
+**85 operator tests + 22 Solidity tests**, all green. Coverage includes the sealed-bid timelock path against **live drand**, uniform-price batch clearing, selective disclosure (including re-opening a sealed order's ciphertext), EIP-191 auth against real keys, the FTSO drift guard, TEE attestation binding, and a `DorrVault` fuzz run asserting a withdrawal can never exceed free balance. See [docs/TESTING.md](./docs/TESTING.md).
 
 ## Honest scope (v1)
 

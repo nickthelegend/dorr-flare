@@ -1,46 +1,47 @@
 # 🔌 API & on-chain reference
 
-The operator is a Hono server on `http://localhost:8790`. All JSON. CORS-open for the web app.
+The operator is a Hono server on `http://localhost:8791`. All JSON. CORS-open for the web app.
 
 ## Conventions
 
-- Prices/PnL are numbers in **dUSD** (6-decimals on-chain, plain numbers over the API).
-- Slow work (ZK proofs ~40s, preprod confirmations) runs as **async jobs** — mutating calls return a `jobId` you poll.
+- Prices/PnL are numbers in **FXRP** (6 decimals on-chain, plain numbers over the API).
+- Slow work (Coston2 confirmations, drand rounds) runs as **async jobs** — mutating calls return a `jobId` you poll.
 - **Value-moving** calls (`commit`, `execute`, `close`, `withdraw`) accept an `auth` envelope and require it when `DORR_AUTH=1`. See [SECURITY](./SECURITY.md).
 
 ## Market & price
 
 | Method | Path | Returns |
 |--------|------|---------|
-| GET | `/health` | `{ ok, service, markets, cardanoReady }` |
-| GET | `/config` | addresses, explorer base, market metadata (for the evidence panel) |
+| GET | `/health` | `{ ok, service, markets, chain, flareReady }` |
+| GET | `/config` | `{ network, chainId, explorerBase, markets, flare: { vaultAddress, settlementAddress, collateral, ftso, faucetUrl } }` |
 | GET | `/markets` | `{ markets: [{ id, symbol, base, maxLeverage, maxOiUsd, disabled, indexPrice, markPrice, publishTime, vamm }] }` |
 
-## Collateral (dUSD + vault)
+## Collateral (FXRP + vault)
 
 | Method | Path | Body / returns |
 |--------|------|----------------|
-| GET | `/vault/info?address=addr_test1…` | `{ vaultAddress, dusdPolicyId, dusdUnit, dusdDecimals, operatorAddress, anchorAddress, depositDatumCbor }` |
-| POST | `/faucet` | `{ address, amount? }` → mints dUSD (real preprod tx) → `{ success, txHash, amount }` |
-| GET | `/account/:address` | `{ balance, locked, free, openPositions }` |
-| POST | `/deposits/sync` | `{ address }` → credits confirmed vault deposits → `{ credited, balance, free }` |
-| POST | `/withdraw` 🔐 | `{ address, amount, auth? }` → operator-signed vault spend → `{ success, txHash }` |
+| GET | `/vault/info` | `{ chain, chainId, vaultAddress, settlementAddress, collateral: { symbol, address, decimals }, explorerUrl, faucetUrl }` |
+| GET | `/flare/info` | deployed contracts, collateral, live solvency, enclave signer |
+| GET | `/flare/account/:address` | the trader's **on-chain** vault account `{ balance, locked, free }` |
+| GET | `/account/:address` | trading ledger `{ balance, locked, free, openPositions }` — reconciled from the vault on every read |
+| POST | `/deposits/sync` | `{ address }` → re-reads the vault and credits new collateral → `{ credited, balance, free }` |
+| POST | `/faucet` | **501** — dorr cannot mint FXRP; returns `faucetUrl` for Flare's own faucet |
+| POST | `/withdraw` | **501** — withdrawal is non-custodial; your wallet calls `DorrVault.withdraw(uint256)` directly |
 
-**Deposit** is built client-side (Mesh) — pay dUSD + min-ADA to `vaultAddress` with the inline `depositDatumCbor` (attributes the deposit to you), then call `/deposits/sync`.
+**Deposit** happens in the browser against the contracts: ERC-20 `approve(vault, amount)` then `DorrVault.deposit(amount)`, both signed by the trader. The operator only *reads* the result — it can neither deposit nor withdraw on your behalf.
 
 ## Trading
 
 | Method | Path | Body / returns |
 |--------|------|----------------|
 | POST | `/orders/commit` 🔐 | `{ address, marketId, side, marginUsd, leverage, privacyMode, auth? }` → `{ orderId, jobId, commitmentHash, sizeBase, commitPrice }` |
-| POST | `/orders/:id/execute` 🔐 | `{ auth? }` → fills the vAMM (refused if the mark diverges >200 bps from Pyth) → `{ position, jobId }` |
+| POST | `/orders/:id/execute` 🔐 | `{ auth? }` → fills the vAMM (refused if the mark diverges >200 bps from the FTSO index) → `{ position, jobId }` |
 | POST | `/positions/:id/close` 🔐 | `{ fraction?, auth? }` → `{ position, jobId }` (partial close when `0<fraction<1`) |
 | POST | `/positions/:id/margin` 🔐 | `{ delta, auth? }` → add (+) / remove (−) margin → `{ position }` |
 | POST | `/positions/:id/stops` 🔐 | `{ stopLoss?, takeProfit?, auth? }` → set/clear hidden SL/TP → `{ position }` |
 | POST | `/orders/:id/cancel` 🔐 | `{ auth? }` → cancel a resting order, release margin → `{ order }` |
-| POST | `/orders/:id/anchor-commit` 🔐 | `{ auth? }` → timestamp the commitment on Cardano L1 (contents hidden) → `{ txHash, explorerUrl, order }` |
 | GET | `/orders/resting/:address` | the caller's private resting limit orders (owner-only view) |
-| GET | `/orders/:id` | the order incl. `.midnight` tx hashes + `.commitAnchor` |
+| GET | `/orders/:id` | the order incl. its commitment and status |
 | GET | `/positions/:address` | `{ positions: [{ id, marketId, side, sizeBase, entryPrice, markPrice, unrealizedPnl, liquidationPrice, leverage, marginUsd, fundingPaid, status, positionNft, settlement }] }` |
 | GET | `/jobs/:id` | `{ id, kind, status: running\|complete\|error, steps: [{ label, status, txHash?, detail?, ms? }], error? }` |
 
@@ -65,36 +66,49 @@ The operator is a Hono server on `http://localhost:8790`. All JSON. CORS-open fo
 | GET | `/events?address=` | the trader's activity timeline (commit/fill/close/anchor/…) |
 | POST | `/disclose` 🔐 | `{ orderId, audience }` → selective disclosure of a hidden order to a chosen auditor |
 | POST | `/disclose/verify` | `{ disclosure }` → recompute SHA-256, check it equals the on-chain commitment |
-| POST | `/demo/seed` | `{ address, dusd? }` → instant off-chain margin (demo) |
+| POST | `/demo/seed` | `{ address, fxrp? }` → instant off-chain margin (**demo/testing only** — unbacked, never enabled for a real trader) |
 | POST | `/demo/reset` | clears state for a fresh run |
-| GET | `/ops/balances` | operator tADA + dUSD (diagnostics) |
+| GET | `/ops/balances` | relayer C2FLR + vault FXRP + collateral metadata (diagnostics) |
 | GET | `/ops/solvency` | proof-of-solvency: live on-chain vault reserves vs credited liabilities + verifiable `attestation` |
 
 ## The order lifecycle in calls
 
+Direct path (immediate fill against the vAMM):
+
 ```
-faucet → (client deposit tx) → /deposits/sync
-      → /orders/commit  →  poll /jobs/:jobId   (ZK: deploy order + authority proof)
-      → /orders/:id/execute → poll /jobs/:jobId (ZK: match attest + CIP-68 mint)
-      → /positions/:id/close → poll /jobs/:jobId (ZK settle + L1 anchor + ZK bind)
-      → /withdraw
+Flare faucet → wallet: approve + DorrVault.deposit()   → /deposits/sync
+   → /orders/commit          → poll /jobs/:jobId   (commitment sealed)
+   → /orders/:id/execute     → poll /jobs/:jobId   (commitment verified → vAMM fill)
+   → /positions/:id/close    → poll /jobs/:jobId   (settlement digest)
+   → wallet: DorrVault.withdraw()
+```
+
+Sealed path (operator-blind — the one the privacy claim rests on):
+
+```
+browser timelock-encrypts to drand round R
+   → /orders/seal            (operator stores ciphertext it cannot read)
+   → round R lands → keeper opens the epoch, clears at ONE uniform price
+   → enclave signs the batch → DorrBatchSettlement.settleBatch on Flare
+     (contract re-reads FTSO; reverts PriceOutOfBand if the price is off-market)
 ```
 
 ## On-chain artifacts
 
-### Midnight — Compact contracts (`vendor/zkperps/contract/src/*.compact`)
-| Contract | Proves | Ledger state |
-|----------|--------|--------------|
-| `zkperps-order` | knowledge of the trader secret behind `traderPk` | `orderCommitment`, `traderPk`, `l1SettlementAnchor` |
-| `zkperps-matching` | two preimages hash to two commitments (execution attest) | `bid/askOrderCommitment`, `matchRecord` |
-| `zkperps-settlement` | `next = H(state ‖ payload)` transition | `stateDigest` |
+### Flare — Solidity (`contracts/src/`)
 
-Driven per-trade by `vendor/zkperps/midnight-local-cli/src/dorr-{commit,match,settle,bind-anchor}.ts` against the local proof server.
+| Contract | Rule |
+|----------|------|
+| **DorrVault** | Holds FXRP. `deposit()`/`withdraw()` act on `msg.sender` only — nobody else can move a trader's collateral. Settlement may `lockMargin`/`releaseMargin`/`applyPnl`; `applyPnl` reverts unless the deltas sum to zero, so settlement can never drain reserves. |
+| **DorrBatchSettlement** | Records a cleared epoch. Independently re-reads **FTSO v2** and reverts `PriceOutOfBand` if the clearing price deviates beyond `maxDriftBps`; requires a TEE quote bound to `keccak256(epochId, membershipRoot, clearingPrice, orderCount)`. |
+| **TEEAttestationVerifier** | Registers enclave measurements and verifies a quote is signed by a registered enclave *for this exact payload*. |
 
-### Cardano — Aiken (Plutus V3, `packages/contracts-aiken/`)
-| Validator / policy | Rule |
-|--------------------|------|
-| **dUSD** minting policy | native `sig` policy — operator-minted faucet token, 6 decimals |
-| **margin_vault** | spend requires the operator signature (v1 custody); deposits carry an inline `VaultDatum{owner}` |
-| **settlement_anchor** | data-carrier: locks min-ADA with inline `AnchorDatum{settlement_id, order_commitment, midnight_tx}` |
-| **CIP-68 position NFT** | (222) to trader + (100) reference with metadata datum |
+Deployed on Coston2 — addresses in [`/flare/info`](#) and the README.
+
+### Off-chain privacy primitives
+
+| Piece | What it does |
+|-------|--------------|
+| **drand timelock** (`sealbid.ts`) | The browser encrypts the order to a future drand round; the operator holds ciphertext it provably cannot open until the batch is frozen. |
+| **ECIES to the enclave** (`ecies.ts`) | Orders can be sealed directly to the matching enclave's public key, so the API tier relays bytes it cannot read. |
+| **Order commitment** (`packages/engine`) | `SHA-256(pairId, side, price, size, leverage, margin, nonce)` — what the public sees, and what a selective disclosure opens. |

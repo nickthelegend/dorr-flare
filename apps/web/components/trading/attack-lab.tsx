@@ -36,7 +36,7 @@ import {
   Clock,
   EyeOff,
 } from "lucide-react";
-import { cn, formatUsd } from "@/lib/core";
+import { cn, formatUsd, humanizeError } from "@/lib/core";
 import { useMarketSelection } from "@/context/market-context";
 import { useMarkets } from "@/hooks/use-operator";
 import { operator, type AttackLab, type AttackStep, type BatchDemo, type SealedDemo, type Side } from "@/lib/operator";
@@ -229,7 +229,7 @@ export function AttackLabBody() {
       setResult(res);
       play(res);
     } catch (e: any) {
-      setError(String(e?.message ?? e));
+      setError(humanizeError(e));
     } finally {
       setLoading(false);
     }
@@ -410,7 +410,7 @@ export function BatchAuctionBody() {
       const res = await operator.batchDemo({ marketId: selectedMarketId, side, marginUsd: 1000, leverage: 10 });
       setResult(res);
     } catch (e: any) {
-      setError(String(e?.message ?? e));
+      setError(humanizeError(e));
     } finally {
       setLoading(false);
     }
@@ -565,7 +565,7 @@ export function SealedBidBody() {
     try {
       setResult(await operator.sealedDemo({ marketId: selectedMarketId, side: "LONG", marginUsd: 1000, leverage: 10 }));
     } catch (e: any) {
-      setErr(String(e?.message ?? e));
+      setErr(humanizeError(e));
     } finally {
       setLoading(false);
     }

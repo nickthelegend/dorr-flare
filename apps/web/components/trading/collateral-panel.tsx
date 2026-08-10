@@ -9,7 +9,7 @@ import { Bullet } from "@/components/ui/bullet";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { Loader2, Droplets, ArrowDownToLine, ArrowUpFromLine, ExternalLink, Vault } from "lucide-react";
-import { cn, formatUsd, truncateHash } from "@/lib/core";
+import { cn, formatUsd, humanizeError, truncateHash } from "@/lib/core";
 import { useDorrWallet } from "@/hooks/use-dorr-wallet";
 import { useAccount, useInvalidateTrading } from "@/hooks/use-operator";
 import { operator } from "@/lib/operator";
@@ -34,9 +34,28 @@ const readClient = () => createPublicClient({ chain: coston2, transport: http() 
 const explorerTx = (h: string) => `https://coston2-explorer.flare.network/tx/${h}`;
 
 export default function CollateralPanel() {
-  const { connected, address, wallet } = useDorrWallet();
+  const { connected, address, wallet, wrongNetwork, switchToCoston2 } = useDorrWallet();
   const { data: account } = useAccount(address);
   const invalidate = useInvalidateTrading();
+
+  /**
+   * Deposits and withdrawals are Coston2 transactions. Catching the mismatch
+   * here — rather than letting the wallet reject it — means the user gets a
+   * sentence telling them what to do instead of a chain-id comparison, and one
+   * click to fix it.
+   */
+  const ensureCoston2 = async (action: string): Promise<boolean> => {
+    if (!wrongNetwork) return true;
+    try {
+      await switchToCoston2();
+      return true;
+    } catch {
+      toast.error(`Wrong network to ${action}.`, {
+        description: "Switch your wallet to Flare Coston2 and try again.",
+      });
+      return false;
+    }
+  };
 
   const [depositAmt, setDepositAmt] = useState("100");
   const [withdrawAmt, setWithdrawAmt] = useState("");
@@ -63,6 +82,7 @@ export default function CollateralPanel() {
       toast.error("Enter an FXRP amount to deposit.");
       return;
     }
+    if (!(await ensureCoston2("deposit"))) return;
     setDepositing(true);
     cancelled.current = false;
     try {
@@ -108,7 +128,7 @@ export default function CollateralPanel() {
       toast.success(`Deposited ${n} FXRP`, { description: truncateHash(txHash) });
       invalidate(address);
     } catch (e: any) {
-      const msg = String(e?.shortMessage ?? e?.message ?? e);
+      const msg = humanizeError(e);
       toast.error("Deposit failed", { description: msg.slice(0, 200) });
     } finally {
       setDepositing(false);
@@ -124,6 +144,7 @@ export default function CollateralPanel() {
       toast.error("Enter an FXRP amount to withdraw.");
       return;
     }
+    if (!(await ensureCoston2("withdraw"))) return;
     setWithdrawing(true);
     try {
       const info = await operator.flareInfo();
@@ -141,7 +162,7 @@ export default function CollateralPanel() {
       setWithdrawAmt("");
       invalidate(address);
     } catch (e: any) {
-      const msg = String(e?.shortMessage ?? e?.message ?? e);
+      const msg = humanizeError(e);
       toast.error("Withdraw failed", { description: msg.slice(0, 200) });
     } finally {
       setWithdrawing(false);

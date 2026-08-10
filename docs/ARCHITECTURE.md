@@ -1,58 +1,56 @@
 # 🏗️ Architecture
 
-dorr fuses two things that normally don't meet: a **real perps trading app** (UniPerp's UI + engine) and a **ZK privacy layer** (the Anti-Front-Running-ZKPerps research on Midnight). The result is a perp where your order is a zero-knowledge commitment until it settles.
+dorr fuses two things that normally don't meet: a **real perps trading app** (UniPerp's UI + engine) and an **anti-front-running execution layer** (drand-timelock sealed orders cleared in uniform-price batches, settled on Flare). The result is a perp whose operator cannot read your order in time to trade ahead of it.
 
 ## The five layers
 
 ```mermaid
 flowchart TB
-  U["👤 Trader + Lace/Eternl (CIP-30)"]
+  U["👤 Trader + MetaMask/Rabby (EIP-191)"]
 
   subgraph FE["① Frontend — Next.js (apps/web)"]
     UI["Trading terminal · charts · portfolio"]
-    W["Mesh wallet · signs every action"]
+    W["EIP-1193 wallet · seals orders in-browser (tlock)"]
   end
 
-  subgraph OP["② Operator — Node/Hono (services/operator)"]
-    EX["vAMM executor (Pyth mark + impact)"]
+  subgraph OP["② Operator — Bun/Hono (services/operator)"]
+    EX["vAMM executor (FTSO mark + impact)"]
     ENG["engine: margin · funding · liquidation"]
-    AUTH["wallet-sig auth · privacy projection"]
-    PR["Midnight prover driver"]
-    CX["Cardano tx builder (Lucid)"]
-    KP["keepers: price · funding · liquidation"]
+    AUTH["EIP-191 auth · privacy projection"]
+    SB["sealed-bid keeper · uniform-price clearing"]
+    FX["Flare tx layer (viem)"]
   end
 
-  subgraph MN["③ Midnight — real ZK (local net + proof server)"]
-    C1["zkperps-order · commit + authority"]
-    C2["zkperps-matching · execution attest"]
-    C3["zkperps-settlement · state digest"]
+  subgraph TEE["③ Confidential compute"]
+    E1["enclave holds the ECIES key"]
+    E2["signs a quote bound to the batch payload"]
   end
 
-  subgraph CD["④ Cardano preprod"]
-    DUSD["dUSD policy + faucet"]
-    VLT["margin vault (Aiken, operator-sig)"]
-    ANC["settlement anchor (inline datum)"]
-    NFT["CIP-68 position NFT"]
+  subgraph FL["④ Flare Coston2"]
+    VLT["DorrVault — FXRP, depositor-only withdraw"]
+    SET["DorrBatchSettlement — FTSO band + quote check"]
+    VER["TEEAttestationVerifier"]
   end
 
-  PY["⑤ Pyth Hermes (off-chain prices)"]
+  FT["⑤ FTSO v2 (read on-chain)"]
 
-  U --> UI --> W -->|signed request| OP
-  PY -.prices.-> EX
-  PY -.prices.-> KP
-  W -->|deposit dUSD| VLT
-  PR --> C1 & C2 & C3
-  CX --> DUSD & VLT & ANC & NFT
-  style MN fill:#0b7,stroke:#0b7,color:#fff
+  U --> UI --> W -->|sealed order + signature| OP
+  FT -.prices.-> EX
+  FT -.contract re-reads.-> SET
+  W -->|deposit FXRP| VLT
+  SB --> TEE
+  FX --> SET --> VLT
+  SET --> VER
+  style FL fill:#e62058,stroke:#e62058,color:#fff
 ```
 
 | Layer | Package | Real vs stub |
 |-------|---------|--------------|
-| Frontend | `apps/web` | ported UniPerp premium UI, EVM ripped out, Mesh/Lace + operator client |
-| Operator | `services/operator` | vAMM, accounting, auth, ZK driver, Cardano tx, keepers, A/B demo |
-| Engine | `packages/engine` | off-chain perps engine from the ZKPerps research (margin/funding/liquidation/commitment) |
-| Compact | `vendor/zkperps` + `dorr-*` drivers | 5 real Midnight Compact contracts + per-trade proof drivers |
-| Aiken | `packages/contracts-aiken` | dUSD policy · margin vault · settlement anchor (Plutus V3, `aiken build` green) |
+| Frontend | `apps/web` | UniPerp premium UI on an EIP-1193 wallet; seals orders in-browser with tlock |
+| Operator | `services/operator` | vAMM, accounting, EIP-191 auth, sealed-bid keeper, Flare tx layer |
+| Enclave | `services/operator/src/enclave` | separate process; holds the ECIES key and signs batch attestations |
+| Engine | `packages/engine` | off-chain perps engine (margin/funding/liquidation/commitment/uniform-price clearing) |
+| Contracts | `contracts` | `DorrVault` · `DorrBatchSettlement` · `TEEAttestationVerifier` (Solidity, Foundry green) |
 
 ## A trade, end to end
 
@@ -61,27 +59,27 @@ sequenceDiagram
   autonumber
   participant U as Trader (wallet)
   participant O as Operator
-  participant M as Midnight (ZK)
-  participant C as Cardano preprod
+  participant E as Enclave
+  participant C as Flare Coston2
   participant P as Public feed
 
-  U->>C: deposit dUSD to vault (user-signed)
-  U->>O: commit {market,side,size,lev} + wallet signature
-  O->>M: deploy zkperps-order + proveTraderOrderAuthority (ZK)
+  U->>C: approve + DorrVault.deposit() (user-signed)
+  U->>U: timelock-encrypt the order to drand round R
+  U->>O: submit ciphertext + commitment + margin bound
+  Note over O: 🔒 operator holds bytes it cannot decrypt until R
   O->>P: publish ONLY the 32-byte commitment hash
-  Note over P: 🔒 side/size/price/leverage hidden — bots see nothing
-  U->>O: execute
-  O->>O: fill on the oracle-priced vAMM
-  O->>M: proveAndFinalizeMatch (ZK, execution attest)
-  O->>C: mint CIP-68 position NFT
-  U->>O: close
-  O->>M: proveSettlementTransition (ZK)
-  O->>C: anchor settlement digest (inline datum)
-  O->>M: bindL1SettlementAnchor (ZK, Midnight↔Cardano)
-  O->>U: PnL settled in dUSD; withdraw available
+  Note over C: round R lands
+  O->>O: open the epoch, verify commitments, clear at ONE price
+  O->>E: request a quote for (epochId, root, price, count)
+  E-->>O: EIP-191 attestation bound to that payload
+  O->>C: settleBatch(...)
+  C->>C: re-read FTSO — revert PriceOutOfBand if off-market
+  C->>C: verify the enclave quote
+  O->>U: position opened at the uniform clearing price
+  U->>C: DorrVault.withdraw() — operator not involved
 ```
 
-Every step above is **real** — [proven on-chain](./TESTING.md#on-chain-e2e) with 4 ZK proofs and 6 preprod txs in one run.
+Every step above is **real** — driven from a browser against Coston2, with the deposit, batch settlement and withdrawal all on-chain. See the [README](../README.md#proven-live-on-coston2) for the transactions.
 
 ## The privacy boundary
 
@@ -100,28 +98,31 @@ The commitment is `SHA-256(pairId, side, price, size, leverage, margin, nonce)` 
 
 ## The oracle-priced vAMM
 
-Ported from UniPerp's constant-product model: virtual reserves, price impact on fills, and a keeper that re-centers the pool to the Pyth index. One trader can open a leveraged long/short with no counterparty; the A/B demo can run a *real* sandwich on it (then restore the pool).
+Ported from UniPerp's constant-product model: virtual reserves, price impact on fills, and a keeper that re-centers the pool to the FTSO index. One trader can open a leveraged long/short with no counterparty; the A/B demo can run a *real* sandwich on it (then restore the pool).
 
 ```
 mark = virtualQuote / virtualBase        (constant product: base × quote = k)
 fill walks the curve → price impact       LONG buys base (price ↑), SHORT sells (price ↓)
-keeper recenters to Pyth when drift > 5bps
+keeper recenters to FTSO when drift > 5bps
 ```
 
 ## Trust model (read this)
 
 ```mermaid
 flowchart TB
-  subgraph T["🔓 Trustless today"]
-    P1["Order privacy — public/mempool cannot see or front-run"]
-    P2["L1 audit trail — every settlement anchored on Cardano"]
+  subgraph T["🔓 Cryptographic today"]
+    P1["Order privacy — the public AND the operator cannot read a sealed order"]
+    P2["Uniform price — a sandwich nets $0 by construction"]
+    P3["Self-custody — DorrVault pays only the depositor"]
+    P4["Price band — the settlement contract re-reads FTSO and rejects off-market"]
   end
   subgraph N["🔑 Trusted in v1 (like a sequencer)"]
-    N1["Operator matches + executes (sees plaintext post-reveal)"]
-    N2["Operator custodies collateral (vault = operator-sig)"]
-    N3["ZK attests the pipeline, not the trade math"]
+    N1["Operator liveness / censorship (evidence, not prevention)"]
+    N2["Clearing math is auditable, not ZK-proven"]
+    N3["Liquidation runs off-chain"]
+    N4["Open-position margin is not locked on-chain"]
   end
-  N -.->|v2 path| V["Pyth Lazer on Cardano + Aiken settlement/liquidation validator = trustless settlement"]
+  N -.->|v2 path| V["lock margin on-chain → on-chain liquidation → ZK-proven clearing"]
 ```
 
 We claim **"the public can't see or front-run your order"** — not "trustless perp." That distinction is deliberate and documented; see [SECURITY → honest scope](./SECURITY.md#honest-scope).
@@ -131,8 +132,6 @@ We claim **"the public can't see or front-run your order"** — not "trustless p
 | Process | Port | Notes |
 |---------|------|-------|
 | web (Next.js) | 3000 | premium trading terminal |
-| operator (Hono) | 8790 | the brain |
-| Midnight proof server | 6301 | real ZK proofs |
-| Midnight indexer (GraphQL v3) | 8088 | local net |
-| Midnight node RPC | 9945 | local net |
-| Cardano preprod | remote | Blockfrost primary, keyless Koios fallback |
+| operator (Hono) | 8791 | the brain |
+| enclave | 8795 | confidential matching — holds the ECIES key |
+| Flare Coston2 | remote | public RPC `coston2-api.flare.network` |

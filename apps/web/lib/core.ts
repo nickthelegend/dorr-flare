@@ -37,3 +37,30 @@ export function formatTimestamp(iso: string): string {
     return iso;
   }
 }
+
+/**
+ * Turn a thrown wallet/RPC/network error into one sentence a trader can act on.
+ *
+ * viem's `message` carries a multi-line trailer ("Details: …", "Version: viem@x.y.z")
+ * that is useful in a console and noise in a toast — a user should never be shown
+ * a library version. Prefers viem's own `shortMessage`, strips the trailer, and
+ * gives the common wallet outcomes plain wording.
+ */
+export function humanizeError(e: unknown): string {
+  const raw = String(
+    (e as { shortMessage?: string })?.shortMessage ??
+      (e as { message?: string })?.message ??
+      e ??
+      "",
+  );
+  // Drop viem's diagnostic trailer and keep the first meaningful line.
+  const head = raw.split(/\n\s*(?:Details|Version|Request Arguments|Docs):/)[0].trim();
+  const first = head.split("\n")[0].trim() || "Something went wrong.";
+
+  if (/user rejected|user denied|4001/i.test(first)) return "You rejected the request in your wallet.";
+  if (/insufficient funds/i.test(first)) return "Not enough C2FLR to pay for gas.";
+  if (/does not match the target chain/i.test(first)) return "Wrong network — switch your wallet to Flare Coston2.";
+  if (/failed to fetch|networkerror|load failed/i.test(first)) return "Couldn't reach the operator — is it running?";
+
+  return first.length > 200 ? `${first.slice(0, 200)}…` : first;
+}

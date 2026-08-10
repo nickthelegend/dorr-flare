@@ -6,18 +6,10 @@ import { validateFeeds, startPricePolling, getPrice } from "./ftso.js";
 import { seedPool, recenter } from "./vamm.js";
 import { loadState } from "./state.js";
 import { applyFundingTick, scanLiquidations, scanLimitOrders, scanStops, settleSealedBatch } from "./trading.js";
-import { initCardano } from "./cardano.js";
 
 async function main() {
   console.log("dorr operator starting…");
   loadState();
-
-  // Eagerly bring up Cardano so cardanoReady() is true from the start (enables
-  // CIP-68 minting on execute). Non-fatal: an unfunded/misconfigured wallet just
-  // leaves Cardano routes to surface their own errors.
-  await initCardano().catch((e) =>
-    console.warn(`[cardano] init deferred: ${String(e).slice(0, 160)}`),
-  );
 
   await validateFeeds();
   startPricePolling();

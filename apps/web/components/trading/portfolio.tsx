@@ -11,7 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, ExternalLink, X, Briefcase, Plus, Minus, Target, EyeOff } from "lucide-react";
 import { toast } from "sonner";
-import { cn, formatUsd } from "@/lib/core";
+import { cn, formatUsd, humanizeError } from "@/lib/core";
 import { useDorrWallet } from "@/hooks/use-dorr-wallet";
 import { usePositions, useAccount, useJob, useInvalidateTrading } from "@/hooks/use-operator";
 import { operator, type Position } from "@/lib/operator";
@@ -141,7 +141,7 @@ function MarginControl({
       setAmount("");
       onAdjusted();
     } catch (e: any) {
-      toast.error("Margin adjust failed", { description: String(e?.message ?? e) });
+      toast.error("Margin adjust failed", { description: humanizeError(e) });
     } finally {
       setBusy(false);
     }
@@ -244,7 +244,7 @@ function StopsControl({ position, onSaved }: { position: Position; onSaved: () =
       setOpen(false);
       onSaved();
     } catch (e: any) {
-      toast.error("Set stops failed", { description: String(e?.message ?? e) });
+      toast.error("Set stops failed", { description: humanizeError(e) });
     } finally {
       setBusy(false);
     }
@@ -331,7 +331,7 @@ export default function Portfolio() {
       setCloseJobs((m) => ({ ...m, [position.id]: res.jobId }));
       invalidate(address);
     } catch (e: any) {
-      toast.error("Close failed", { description: String(e?.message ?? e) });
+      toast.error("Close failed", { description: humanizeError(e) });
     } finally {
       setClosingId(null);
     }

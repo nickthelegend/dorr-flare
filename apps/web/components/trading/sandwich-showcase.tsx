@@ -23,7 +23,7 @@ import {
   ShieldCheck,
   ArrowRight,
 } from "lucide-react";
-import { cn, formatUsd } from "@/lib/core";
+import { cn, formatUsd, humanizeError } from "@/lib/core";
 import { useMarketSelection } from "@/context/market-context";
 import { useMarkets } from "@/hooks/use-operator";
 import { operator, type AbDemo, type Side } from "@/lib/operator";
@@ -83,7 +83,7 @@ export function AbShowcaseBody() {
       });
       setResult(res);
     } catch (e: any) {
-      setError(String(e?.message ?? e));
+      setError(humanizeError(e));
     } finally {
       setLoading(false);
     }

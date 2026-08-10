@@ -434,10 +434,10 @@ app.post("/demo/reset", (c) => {
 app.post("/demo/seed", async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const address = String(body.address || "");
-  const dusd = Math.min(Number(body.dusd || 50_000), 1_000_000);
+  const fxrp = Math.min(Number(body.fxrp ?? body.dusd ?? 50_000), 1_000_000);
   if (!address) return bad(c, "address required");
   const acct = account(address);
-  acct.balance = dusd;
+  acct.balance = fxrp;
   acct.locked = 0;
   persist();
   return c.json({ ok: true, address, balance: acct.balance });
@@ -789,7 +789,7 @@ app.get("/ops/solvency", async (c) => {
         surplusUsd: sol.reservesFxrp - sol.liabilitiesFxrp,
         collateralizationRatio: sol.collateralizationRatio,
         vaultAddress: sol.vaultAddress,
-        dusdUnit: sol.fxrpAddress,
+        collateralAddress: sol.fxrpAddress,
         collateral: "FXRP",
         chain: "flare-coston2",
         explorerUrl: explorerAddress(sol.vaultAddress),

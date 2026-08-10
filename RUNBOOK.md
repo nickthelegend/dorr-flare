@@ -1,121 +1,116 @@
 # dorr — runbook
 
-Privacy-preserving perps on Cardano + Midnight. Everything runs locally except the Cardano preprod legs.
+Privacy-preserving perps on **Flare**. Everything runs locally except the Coston2 legs, which are real on-chain transactions.
 
-## What's built (and verified working)
+## Status
 
-| Layer | Status |
-|-------|--------|
-| Monorepo (`apps/web`, `packages/engine`, `packages/contracts-aiken`, `services/operator`, vendored Midnight CLI) | ✅ |
-| Off-chain engine (matching, margin, funding, liquidation, commitment) from ZKPerps | ✅ imported, tests pass |
-| Operator service — 5 markets, Pyth Hermes prices, vAMM executor, accounting, keepers | ✅ boots, live prices |
-| Aiken contracts — dUSD sig-policy, margin vault (operator-param), settlement anchor | ✅ `aiken build` green (v1.1.21) |
-| Midnight ZK pipeline — order→matching→settlement, real proofs on local net | ✅ **all 3 proofs verified (~40s each)** |
-| A/B sandwich demo (deterministic) | ✅ victim pays ~150 bps more when public |
-| Web app (ported UniPerp, Mesh/Lace, operator API) | ✅ **`bun run build` green; renders offline + wallet-less** |
-| CIP-68 position NFTs | ✅ emulator-verified (222 to trader, 100+metadata to operator) |
-| Cardano tx layer (mint / deposit / scan / withdraw / anchor) | ✅ **emulator-verified end-to-end (5 steps)** |
-| Tests | ✅ engine 5, vAMM 7, cardano-emulator + cip68 → all green |
-| **Cardano preprod (live)** — faucet dUSD, vault deposit/withdraw, anchor | ⛔ **blocked ONLY on funding the deployer** (logic already emulator-proven) |
+| Piece | State |
+|---|---|
+| Monorepo (`apps/web`, `packages/engine`, `services/operator`, `contracts`) | ✅ |
+| Off-chain engine (matching, margin, funding, liquidation, commitment) | ✅ tests pass |
+| Solidity contracts — `DorrVault`, `DorrBatchSettlement`, `TEEAttestationVerifier` | ✅ deployed on Coston2, 22 Foundry tests green |
+| FTSO v2 price feeds (6 markets, read on-chain via ContractRegistry) | ✅ live |
+| Sealed-bid path — browser tlock → operator-blind → uniform-price clearing → `settleBatch` | ✅ live-verified on Coston2 |
+| Confidential compute — enclave holds the ECIES key, signs batch quotes | ✅ |
+| Web app (UniPerp UI on EIP-1193) | ✅ builds; renders offline + wallet-less |
+| Tests | ✅ 85 operator + 22 Solidity, all green |
 
-## Security — wallet-signature auth
+## Auth
 
-Every value-moving action (commit / execute / close / withdraw) is bound to a
-CIP-30 wallet signature: the connected wallet signs a fresh, timestamped,
-key-sorted message; the operator verifies it (cardano-verify-datasignature),
-checks freshness (anti-replay window), rejects reused signatures, and confirms
-the signer matches the acting address. **You cannot place or close someone
-else's trade.** Enable enforcement with `DORR_AUTH=1` (the web signs
-automatically when a wallet is connected). Proven by `test/auth-crypto.test.ts`
-— a real CIP-8 signature is accepted, tampered params and cross-wallet forgery
-are rejected.
+Every value-moving call (`commit` / `execute` / `close` / `seal` / `disclose`) carries an
+**EIP-191** signature over a canonical, key-sorted, timestamped message. The operator
+recovers the signer from the signature and checks freshness (±120s), no-reuse, and that
+the signer matches the acting address. **You cannot place or close someone else's trade.**
+Enforcement is on with `DORR_AUTH=1`; the default demo mode doesn't require it.
 
-## Tests (70, all green)
+## Run it
 
 ```bash
-bun test services/operator/test/     # 65: math, auth, auth-crypto, privacy, vAMM, cardano-emulator, cip68, integration, features, features-v2 (batch/oracle-guard/cancel/stats)
-bun run --cwd packages/engine test   # 5: commitment + settlement anchor
-bun run --cwd services/operator src/scripts/live-e2e.ts   # assertive ON-CHAIN E2E (real preprod txs, confirms each on Koios)
+bun install
+bun run --cwd services/operator start          # :8791 — wait for six "feed ok" lines
+bun run --cwd services/operator src/enclave/server.ts   # :8795 — optional, for the confidential path
+bun run --cwd apps/web dev                     # :3000
 ```
-- **Privacy/MEV** (`privacy.test.ts`): commitment is hiding + binding; brute-forcing the 128-bit nonce is infeasible; a private order's public view leaks nothing exploitable.
-- **Batch/guard/cancel/stats** (`features-v2.test.ts`): uniform-price batch clearing makes a sandwich net $0 (structural); the oracle-divergence guard refuses a fill when mark ≠ oracle; cancel releases margin; stats surface OI/skew/funding.
-- **Integration** (`integration.test.ts`): full commit→execute→close in-process with privacy + accounting assertions, and the live-A/B pool-restore invariant.
-- **On-chain E2E** (`live-e2e.ts`): real user wallet → deposit → **proof-of-solvency** (reads the on-chain vault) → **cancel round-trip** → **batch auction** ($0 vs sequential) → private commit → match + CIP-68 NFT → settle + L1 anchor → operator-routed vault withdraw, asserting every preprod tx confirms on Koios. ZK proof legs run on the local Midnight net (or the env-gated `DORR_ZK_MODE=stub` when the local net is unavailable); the Cardano legs are always real preprod.
 
-## Deployer wallet — FUND THIS (preprod tADA)
+No Docker, no local chain, no proof server — the only external dependencies are the Coston2 RPC and the public drand network.
 
-```
-addr_test1qqlkgzx5fldu0c476qkr3svajr89jxaw6mk268cqdy5tna49zmp9qvht53kgd8vcmgyqhlzxjadcx9zj5vfx4lve8ygq9whvac
-```
-Faucet: https://docs.cardano.org/cardano-testnets/tools/faucet (select **Preprod**, request 2–3×).
-Also add a free **Preprod** Blockfrost key to `dorr/.env` → `BLOCKFROST_PROJECT_ID=` (else it falls back to keyless Koios, which is slower/rate-limited for tx building).
-
-## First run
+## Tests
 
 ```bash
-cd dorr
-bun install                              # workspaces
-./tools/scripts/dev.sh up                # docker: Midnight localnet (proof 6301 / indexer 8088 / node 9945)
-./tools/scripts/dev.sh fund-midnight     # once per fresh localnet — funds operator's Midnight wallet + DUST
-./tools/scripts/dev.sh operator          # terminal A → :8790
-./tools/scripts/dev.sh web               # terminal B → :3000
+bun test --cwd services/operator     # 85: math, auth, auth-crypto, privacy, vAMM, sealbid,
+                                     #     sealed-e2e (live drand), confidential, integration, features
+cd contracts && forge test           # 22: vault invariants + fuzz, batch settlement, TEE attestation
 ```
 
-Once the deployer has tADA:
+- **Sealed E2E** runs against the **live drand network** — no mocks. It seals real orders, proves the operator can't open them early, clears an epoch at one uniform price, and checks a cleared sealed order is selectively disclosable.
+- **On-chain E2E** (`src/scripts/flare-e2e.ts`, `src/scripts/confidential-e2e.ts`): real Coston2 transactions — vault reads, batch settlement, and the negative cases (a forged attestation and an out-of-band price are both rejected by the contract).
+- Fast tests use their own state file (`state.test.json`), so running the suite never touches a live operator's ledger.
 
-```bash
-./tools/scripts/dev.sh preprod           # mints dUSD treasury, seeds vault, posts a genesis anchor
+## Funding
+
+The relayer needs **C2FLR** for gas; traders need **C2FLR + FXRP**.
+Faucet: https://faucet.flare.network/coston2 — it hands out both.
+
+dorr holds no minting authority over FXRP, so there is no operator-side faucet. `POST /faucet` returns 501 and points at Flare's.
+
+## Environment
+
+`.env` at the repo root:
+
+```
+FLARE_RPC_URL=https://coston2-api.flare.network/ext/C/rpc
+FLARE_CHAIN_ID=114
+FLARE_EXPLORER=https://coston2-explorer.flare.network
+FXRP_ADDRESS=0x0b6A3645c240605887a5532109323A3E12273dc7
+DORR_VAULT_ADDRESS=0x65b705A49778b9d7bD741A0A979162393c699a98
+DORR_SETTLEMENT_ADDRESS=0x0F99f3a1486D167A9c903F336f1b56869c30e583
+DORR_TEE_VERIFIER_ADDRESS=0x578D75dDbce7fBB05072b733F372De2241d698aE
+FLARE_RELAYER_KEY=0x…        # pays gas for settleBatch
+TEE_ENCLAVE_KEY=0x…          # enclave signing key
+TEE_ID=0x…
+TEE_MEASUREMENT=0x…
+OPERATOR_PORT=8791
+DORR_AUTH=1                  # optional: enforce wallet signatures
 ```
 
-## The demo (A/B — the hero moment)
+## Demo walkthrough
 
-1. Connect **Lace** (preprod + Midnight). Faucet 10k dUSD. Deposit to vault (real preprod tx).
-2. Open a trade with the **privacy toggle = public**: order details hit `/feed` → the sandwich bot front-runs → worse fill.
-3. Same trade with **privacy = dorr private**: `/feed` shows only the commitment hash → bot blind → fair fill.
-4. Point at the side-by-side: `POST /demo/ab` quantifies the difference (≈150 bps saved).
-5. Close a position → watch the live proof steps: **settlement proof → Cardano anchor (explorer link) → Midnight bind**.
+1. Connect **MetaMask** on Coston2. Claim C2FLR + FXRP from the Flare faucet.
+2. Deposit FXRP from the Collateral panel (approve + `deposit`, two real txs).
+3. Open the **Attack Lab** → sandwich a public order, then show it netting **$0.00** against a batch.
+4. Flip **"Seal from the operator"** and submit — the activity log shows the drand round the operator must wait for.
+5. When the round lands, the epoch clears at one price and **settles on Flare**; click the tx through to the explorer.
+6. **Disclose** a position to an audience, then **Verify** it — and verify a tampered copy to watch it be rejected.
+7. Withdraw from the Collateral panel — your wallet signs it; the operator is not involved.
 
 ## Ports
 
 | Service | Port |
-|---------|------|
-| web | 3000 |
-| operator API | 8790 |
-| Midnight proof server | 6301 |
-| Midnight indexer (GraphQL v3) | 8088 |
-| Midnight node RPC | 9945 |
+|---|---|
+| web (Next.js) | 3000 |
+| operator (Hono) | 8791 |
+| enclave | 8795 |
 
-(ghost's pre-existing localnet on 6300/8087/9944 is left untouched; dorr uses its own on 6301/8088/9945.)
+## Verified evidence (this build, Coston2)
 
-## Verified evidence — full live E2E (real user wallet, preprod + local Midnight)
+| Leg | Tx |
+|---|---|
+| FXRP approve + vault deposit | `0x1d716fc5…` |
+| Sealed batch settled on Flare (FTSO re-read + quote verified) | `0xc3a1c184…` |
+| Earlier sealed batch | `0xd942461e…` |
+| Depositor-signed withdrawal (operator uninvolved) | `0x32d2aad1…` |
 
-Reproduce: `bun run --cwd services/operator src/scripts/live-e2e.ts` (operator up). One clean run:
+Any hash → `https://coston2-explorer.flare.network/tx/<hash>`.
 
-**Cardano preprod deploy (deployer funded 10k tADA):** dUSD policy `f0c16d56…` · mint `0debcefa…` · vault `addr_test1wqjah23…` · seed `b16a9585…` · genesis anchor `a3590a6c…`
-
-**The run** (user `addr_test1qrlqtxp…`):
-| step | what | tx |
-|------|------|-----|
-| 1 | operator → user gas | `490e9b9f…` (preprod) |
-| 2 | faucet 5,000 dUSD (mint) | `a9535d0e…` (preprod) |
-| 3 | **user-signed vault deposit** 3,000 dUSD | `856ef149…` (preprod) |
-| 5 | commit + `proveTraderOrderAuthority` | `78baabe2…` (Midnight ZK) |
-| 6 | `proveAndFinalizeMatch` | `0123d381…` (Midnight ZK) |
-| 6 | **CIP-68 position NFT mint** | `58262448…` (preprod) |
-| 7 | `proveSettlementTransition` | `048684da…` (Midnight ZK) |
-| 7 | **L1 settlement anchor** (inline AnchorDatum) | `4b68a747…` (preprod) |
-| 7 | `bindL1SettlementAnchor` | `69037ef7…` (Midnight ZK) |
-| 8 | **operator-signed vault withdraw** (Aiken script spend) | `407fc6e4…` (preprod) |
-
-That's 4 real ZK proofs + 6 real preprod txs — deposit, mint, NFT, anchor, withdraw all on-chain, order contents never exposed (public saw only commitment `8ed0bee0…`). Any hash → `https://preprod.cardanoscan.io/transaction/<hash>`.
-
-Proof timing ~40s each on this machine; preprod confirmations ~20–90s via keyless Koios (add a Blockfrost preprod key to `.env` for snappier tx building).
+We have also observed the contract **rejecting** a batch with `PriceOutOfBand` when the clearing price drifted from FTSO — the guard is not decorative.
 
 ## Key files
 
-- `services/operator/src/vamm.ts` — the vAMM (Pyth mark + constant-product impact)
-- `services/operator/src/trading.ts` — commit→execute→close lifecycle + keepers
-- `services/operator/src/cardano.ts` — dUSD/vault/anchor tx building (Lucid)
+- `services/operator/src/vamm.ts` — the vAMM (FTSO mark + constant-product impact)
+- `services/operator/src/trading.ts` — commit→execute→close lifecycle, sealed-batch keeper, Flare settlement
+- `services/operator/src/sealbid.ts` — drand timelock sealing/opening
+- `services/operator/src/flare.ts` — contract reads + `settleBatch`
+- `services/operator/src/attestation.ts` — enclave quote signing (matches the verifier's digest layout)
 - `services/operator/src/demo.ts` — the deterministic A/B sandwich
-- `vendor/zkperps/midnight-local-cli/src/dorr-*.ts` — per-trade ZK proof drivers
-- `packages/contracts-aiken/dorr-vault/validators/margin_vault.ak` — vault validator
+- `contracts/src/DorrVault.sol` — collateral; depositor-only withdrawal
+- `contracts/src/DorrBatchSettlement.sol` — FTSO band + attestation gate

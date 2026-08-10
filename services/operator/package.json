@@ -5,18 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "bun run --watch src/index.ts",
-    "start": "bun run src/index.ts",
-    "deploy:preprod": "bun run src/scripts/deploy-preprod.ts"
+    "start": "bun run src/index.ts"
   },
   "dependencies": {
     "@dorr/engine": "workspace:*",
     "@hono/node-server": "^1.14.0",
-    "@lucid-evolution/lucid": "0.4.29",
     "@noble/curves": "1.9.7",
-    "@stricahq/bip32ed25519": "^1.1.2",
-    "@stricahq/cbors": "1.0.4",
-    "@stricahq/cip08": "^1.0.4",
-    "@stricahq/typhonjs": "1.2.8",
     "dotenv": "^16.4.7",
     "hono": "^4.7.0",
     "tlock-js": "^0.9.0",

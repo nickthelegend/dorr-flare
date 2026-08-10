@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { cn, formatUsd } from "@/lib/core";
+import { cn, formatUsd, humanizeError } from "@/lib/core";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import {
@@ -141,7 +141,7 @@ export default function TradingPanel() {
         })
         .catch((e) => {
           setPhase("error");
-          toast.error("Execute failed", { description: String(e?.message ?? e) });
+          toast.error("Execute failed", { description: humanizeError(e) });
         });
     }
   }, [phase, commit, commitJob.data]);
@@ -218,7 +218,7 @@ export default function TradingPanel() {
         });
       } catch (e: any) {
         setPhase("error");
-        toast.error("Seal failed", { description: String(e?.message ?? e) });
+        toast.error("Seal failed", { description: humanizeError(e) });
       }
       return;
     }
@@ -246,7 +246,7 @@ export default function TradingPanel() {
       invalidate(address);
     } catch (e: any) {
       setPhase("error");
-      toast.error("Order commit failed", { description: String(e?.message ?? e) });
+      toast.error("Order commit failed", { description: humanizeError(e) });
     }
   };
 
