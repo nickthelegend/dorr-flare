@@ -177,3 +177,71 @@ export function startPricePolling(): void {
   void tick();
   setInterval(tick, env.flare.pollMs);
 }
+
+// ─── historical reconstruction from the chain itself ─────────────────────────
+
+/** Coston2 targets ~1.8s blocks; used only to step backwards by wall-clock. */
+const BLOCKS_PER_MIN = 33;
+
+/**
+ * Reconstruct a market's price history by reading the FTSO v2 feed AT PAST BLOCK
+ * HEIGHTS.
+ *
+ * This is the same contract the live path reads and the same one
+ * `DorrBatchSettlement` re-reads when it accepts a batch — just queried against
+ * earlier state. So the chart's history is on-chain oracle data, not a
+ * third-party price API: anyone can reproduce any bar with a single archive
+ * `eth_call`, which is a stronger claim than "we fetched it from a vendor".
+ *
+ * Returns oldest-first samples. Callers fold these into candles.
+ */
+export async function readFeedHistory(
+  feedId: string,
+  minutes: number,
+  concurrency = 8,
+  samplesPerMinute = 1,
+): Promise<Array<{ atMs: number; price: number }>> {
+  const ftso = await resolveFtsoAddress();
+  const pc = publicClient();
+  const head = await pc.getBlockNumber();
+  const headBlock = await pc.getBlock({ blockNumber: head });
+  const headMs = Number(headBlock.timestamp) * 1000;
+
+  // Several samples per minute, walking backwards from the head block. One
+  // sample per bar would make every reconstructed candle a doji (open = high =
+  // low = close), which renders as a tick rather than a candle — the extra
+  // samples are what give a bar its body and wick.
+  const steps = Math.max(1, samplesPerMinute);
+  const blocksPerStep = Math.max(1, Math.round(BLOCKS_PER_MIN / steps));
+  const stepMs = 60_000 / steps;
+  const targets: Array<{ block: bigint; atMs: number }> = [];
+  for (let i = minutes * steps; i >= 1; i--) {
+    const back = BigInt(i * blocksPerStep);
+    if (back >= head) continue;
+    targets.push({ block: head - back, atMs: headMs - i * stepMs });
+  }
+
+  const out: Array<{ atMs: number; price: number }> = [];
+  for (let i = 0; i < targets.length; i += concurrency) {
+    const chunk = targets.slice(i, i + concurrency);
+    const rows = await Promise.all(
+      chunk.map(async (t) => {
+        try {
+          const [value, decimals] = (await pc.readContract({
+            address: ftso,
+            abi: FTSO_ABI,
+            functionName: "getFeedById",
+            args: [feedId as `0x${string}`],
+            blockNumber: t.block,
+          })) as [bigint, number, bigint];
+          const price = Number(value) / 10 ** Number(decimals);
+          return price > 0 ? { atMs: t.atMs, price } : null;
+        } catch {
+          return null; // pruned block or transient RPC error — skip that minute
+        }
+      }),
+    );
+    for (const r of rows) if (r) out.push(r);
+  }
+  return out;
+}

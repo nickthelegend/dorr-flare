@@ -8,9 +8,7 @@ import { useEvmWallet } from "./use-evm-wallet";
  * dorr's wallet handle.
  *
  * Now backed by an EVM wallet on Flare Coston2 — dorr settles on Flare and
- * margins in FXRP (an ERC-20), so a Cardano CIP-30 wallet could neither hold the
- * collateral nor sign a settlement transaction. The shape of this hook is
- * unchanged so every consumer keeps working.
+ * margins in FXRP (an ERC-20), so the signing identity is an EVM account.
  */
 export function useDorrWallet() {
   const evm = useEvmWallet();

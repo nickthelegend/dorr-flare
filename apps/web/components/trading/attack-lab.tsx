@@ -527,6 +527,12 @@ export function BatchAuctionBody() {
 
       {result && (
         <div className="space-y-4">
+          {/* State the method up front — a paired comparison is only meaningful
+              if both arms started from the same book. */}
+          <p className="text-[10px] text-muted-foreground/80 leading-snug border-l-2 border-border pl-2">
+            {result.methodology}
+          </p>
+
           {/* the money shot: batch $0 vs sequential $X */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="rounded-lg border border-success/50 bg-success/5 p-3 space-y-1">

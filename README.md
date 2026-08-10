@@ -11,6 +11,34 @@ Private order flow on **Flare** — your order is a commitment the operator itse
 
 ---
 
+## Submission — Flare Summer Signal
+
+**Bounty:** **Confidential Compute Apps** (primary) · **Interoperable Asset Products** (secondary — FXRP is the margin asset and the vault's only collateral).
+
+**Target user:** leveraged perp traders whose order flow is large enough to be worth front-running — the people currently paying a timing tax on every fill — plus the market makers quoting against them, who price that toxicity into spreads.
+
+**What was built during the program.** dorr existed before this hackathon as a privacy-perps prototype on a different stack. Everything that makes it a Flare product was built here:
+
+| Built for Flare | What it replaced |
+|---|---|
+| `DorrVault`, `DorrBatchSettlement`, `TEEAttestationVerifier` (Solidity, deployed on Coston2) | no on-chain settlement layer |
+| FTSO v2 as the price source, resolved via `ContractRegistry`, and **re-read on-chain by the settlement contract** | an off-chain HTTP price feed |
+| FXRP (FAssets) as real margin, custodied non-custodially | a self-minted test token |
+| Confidential matching enclave — ECIES-sealed orders, signed batch attestations verified on-chain | operator read every order in the clear |
+| EIP-191 wallet auth, EVM wallet connection, chart history reconstructed from FTSO at past block heights | a non-EVM wallet stack |
+
+The prior work is the perps engine itself — vAMM, margin, funding, liquidation — and the drand timelock sealing. What is new is that the confidentiality is now *enforceable*: an enclave the operator cannot read through, and a contract that refuses a batch priced away from FTSO.
+
+**Roadmap.**
+1. **Prove the clearing, don't assert it** — a fixed-N ZK circuit over the uniform-price computation, so the epoch's fills are verifiable rather than trusted.
+2. **Move liquidation on-chain** — today the keeper is off-chain; the maintenance-margin check belongs in `DorrVault`.
+3. **Run the enclave in Flare Confidential Compute** — the attestation format and on-chain verifier are already in place; today the enclave is a separate process holding its own key, and the measurement it registers is not yet hardware-rooted.
+4. **Decentralise the batch operator** — the sealed path already means an operator cannot front-run; the remaining risk is liveness and censorship, which wants more than one sequencer.
+
+**Demo:** see [VIDEO.md](./VIDEO.md) for the walkthrough script, [DEMO.md](./DEMO.md) for the live version. Working app: `bun run --cwd apps/web dev` after the Quickstart below.
+
+---
+
 ## The problem
 
 On every public perp DEX your order sits in the mempool before it executes. Searchers read it, trade ahead of it, and sandwich you. On a leveraged product that timing tax is brutal — and it's structural, not a bug.

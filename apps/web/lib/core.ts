@@ -1,4 +1,4 @@
-// Core utilities — pure helpers only (EVM config removed in the Cardano port).
+// Core utilities — pure helpers only.
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 

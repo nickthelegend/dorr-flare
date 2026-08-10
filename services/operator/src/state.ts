@@ -220,6 +220,8 @@ export function recordPriceSample(marketId: string, price: number, atMs: number)
   if (!Number.isFinite(price) || price <= 0) return;
   const minute = Math.floor(atMs / 60_000) * 60; // bar time, seconds
   const series = (state.candles[marketId] ??= []);
+
+  // Fast path: extending the newest bar, which is what live polling always does.
   const last = series[series.length - 1];
   if (last && last.t === minute) {
     last.h = Math.max(last.h, price);
@@ -227,7 +229,31 @@ export function recordPriceSample(marketId: string, price: number, atMs: number)
     last.c = price;
     return;
   }
-  series.push({ t: minute, o: price, h: price, l: price, c: price });
+  if (!last || minute > last.t) {
+    series.push({ t: minute, o: price, h: price, l: price, c: price });
+    if (series.length > CANDLE_CAP) series.splice(0, series.length - CANDLE_CAP);
+    return;
+  }
+
+  // Out-of-order sample — this is the archive backfill filling in minutes that
+  // predate what live polling already recorded. The series MUST stay sorted:
+  // consumers aggregate by walking it, so an unsorted array collapses every bar
+  // into whichever bucket happens to be adjacent.
+  let lo = 0;
+  let hi = series.length; // first index with t >= minute
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (series[mid].t < minute) lo = mid + 1;
+    else hi = mid;
+  }
+  const at = series[lo];
+  if (at && at.t === minute) {
+    at.h = Math.max(at.h, price);
+    at.l = Math.min(at.l, price);
+    at.c = price;
+    return;
+  }
+  series.splice(lo, 0, { t: minute, o: price, h: price, l: price, c: price });
   if (series.length > CANDLE_CAP) series.splice(0, series.length - CANDLE_CAP);
 }
 

@@ -6,7 +6,7 @@ import { MARKETS, marketById } from "./markets.js";
 import { fundingRate } from "./trading-math.js";
 import { getPrice, isFeedDisabled } from "./ftso.js";
 import * as vamm from "./vamm.js";
-import { account, getState, persist, logEvent } from "./state.js";
+import { account, getState, persist, logEvent, recordPriceSample } from "./state.js";
 import { getJob } from "./jobs.js";
 import { commitOrder, executeOrder, closePosition, cancelOrder, anchorOrderCommitment, addSealedOrder, settleSealedBatch, unrealizedPnl, adjustMargin, setStops, liqPriceOf } from "./trading.js";
 import { runAbDemo, runAttackLab } from "./demo.js";
@@ -17,7 +17,7 @@ import {
   getBatchOnChain, explorerAddress, explorerTx, relayerBalance, syncLockedMargin,
 } from "./flare.js";
 import { enclaveConfigured, enclaveAddress } from "./attestation.js";
-import { resolveFtsoAddress } from "./ftso.js";
+import { resolveFtsoAddress, readFeedHistory } from "./ftso.js";
 import { buildDisclosure, verifyDisclosure } from "./disclosure.js";
 import { createJob, jobStep, completeJob, failJob } from "./jobs.js";
 import { verifyAuth, type AuthEnvelope } from "./auth.js";
@@ -78,6 +78,53 @@ app.get("/markets", (c) => {
   return c.json({ markets: out });
 });
 
+/** Markets whose archive backfill has run (or is running) this process. */
+const historyFilled = new Map<string, Promise<void>>();
+
+/**
+ * Fill a market's candle history from on-chain FTSO reads at past blocks, once.
+ *
+ * Deduped per market so concurrent chart requests don't fan out hundreds of
+ * duplicate archive calls, and skipped entirely once enough history exists.
+ */
+export function ensureHistory(marketId: string, feedId: string, minutes = 360): Promise<void> {
+  const have = getState().candles[marketId]?.length ?? 0;
+  if (have >= minutes) return Promise.resolve();
+
+  const running = historyFilled.get(marketId);
+  if (running) return running;
+
+  const job = (async () => {
+    try {
+      const samples = await readFeedHistory(feedId, minutes);
+      for (const s of samples) recordPriceSample(marketId, s.price, s.atMs);
+      persist();
+      console.log(`[chart] ${marketId}: reconstructed ${samples.length} min of FTSO history from chain`);
+    } catch (e) {
+      // Chart falls back to live-only; never fail a request over history.
+      console.error(`[chart] history backfill failed for ${marketId}: ${String(e).slice(0, 140)}`);
+      historyFilled.delete(marketId); // allow a later retry
+    }
+  })();
+  historyFilled.set(marketId, job);
+  return job;
+}
+
+/**
+ * Reconstruct every market's history in the background at boot.
+ *
+ * Runs one market at a time so the archive walk never competes with live price
+ * polling for RPC throughput. By the time anyone opens the terminal the default
+ * market is already filled; the rest land within a minute.
+ */
+export function warmChartHistory(): void {
+  // Only the market the terminal opens on. The rest reconstruct lazily the first
+  // time someone selects them — the public RPC will not sustain six concurrent
+  // archive walks, and warming all of them up front just gets us rate-limited.
+  const first = MARKETS[0];
+  if (first) void ensureHistory(first.id, first.feedId).catch(() => {});
+}
+
 /**
  * OHLC history for a market, built from the FTSO v2 samples this operator read.
  *
@@ -85,11 +132,18 @@ app.get("/markets", (c) => {
  * re-reads on-chain — there is no third-party price API in the loop. Stored as
  * 1-minute bars and aggregated up to whatever bucket the client asks for.
  */
-app.get("/markets/:id/candles", (c) => {
+app.get("/markets/:id/candles", async (c) => {
   const id = c.req.param("id");
-  if (!marketById(id)) return bad(c, `unknown market ${id}`, 404);
+  const market = marketById(id);
+  if (!market) return bad(c, `unknown market ${id}`, 404);
   const bucketSec = Math.max(60, Math.min(86_400, Number(c.req.query("bucketSec") || 60)));
   const limit = Math.max(1, Math.min(2_000, Number(c.req.query("limit") || 500)));
+
+  // Kick off the archive reconstruction if this market hasn't been filled yet,
+  // but never block the response on it — a chart that takes 30s to answer is
+  // worse than one that fills in a moment later. `warmChartHistory()` normally
+  // has this done before the first request arrives.
+  void ensureHistory(id, market.feedId);
 
   const minutes = getState().candles[id] ?? [];
   if (bucketSec === 60) {

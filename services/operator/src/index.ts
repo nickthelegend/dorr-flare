@@ -1,6 +1,6 @@
 import { serve } from "@hono/node-server";
 import { env } from "./env.js";
-import { app } from "./routes.js";
+import { app, warmChartHistory } from "./routes.js";
 import { MARKETS } from "./markets.js";
 import { validateFeeds, startPricePolling, getPrice } from "./ftso.js";
 import { seedPool, recenter } from "./vamm.js";
@@ -14,6 +14,7 @@ async function main() {
 
   await validateFeeds();
   startPricePolling();
+  warmChartHistory();
 
   // Seed vAMM pools once prices exist, then keep them centered on FTSO.
   const seeded = new Set<string>();

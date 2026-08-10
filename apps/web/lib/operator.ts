@@ -18,7 +18,8 @@ export interface Health {
   ok: boolean;
   service: string;
   markets: number;
-  cardanoReady: boolean;
+  chain: string;
+  flareReady: boolean;
   now?: string;
 }
 
@@ -35,14 +36,14 @@ export interface Market {
 }
 
 export interface VaultInfo {
+  chain: string;
+  chainId: number;
   vaultAddress: string;
-  dusdPolicyId: string;
-  dusdUnit: string;
-  dusdDecimals: number;
-  operatorAddress: string;
-  anchorAddress?: string;
-  /** Inline datum (CBOR hex) tagging a deposit with the depositor's pkh. */
-  depositDatumCbor?: string;
+  settlementAddress: string;
+  collateral: { symbol: string; address: string; decimals: number };
+  explorerUrl: string;
+  faucetUrl: string;
+  note?: string;
 }
 
 export interface Account {
@@ -61,7 +62,7 @@ export interface FaucetResult {
 }
 
 export interface DepositSyncResult {
-  credited: Array<{ utxoRef: string; dusd: number }>;
+  credited: Array<{ amount: number }>;
   balance: number;
   free: number;
 }
@@ -82,14 +83,6 @@ export interface CommitResult {
   commitPrice: number;
 }
 
-export interface OrderMidnight {
-  contractAddress?: string;
-  deployTx?: string;
-  authorityProofTx?: string;
-  anchorBindTx?: string;
-  matchProofTx?: string;
-}
-
 export interface Order {
   id: string;
   address: string;
@@ -107,7 +100,6 @@ export interface Order {
   orderType?: OrderType;
   limitPrice?: number;
   maxSlippageBps?: number;
-  midnight?: OrderMidnight;
   executedFill?: { avgPrice: number; priceImpactBps: number; notional: number };
 }
 
@@ -138,8 +130,10 @@ export interface Position {
   takeProfitPrice?: number;
   settlement?: {
     settlementId?: string;
-    midnightSettlementTx?: string;
-    cardanoAnchorTx?: string;
+    /** SHA-256(orderCommitment ‖ closeRecord) — proves what settled, not its contents. */
+    settlementDigest?: string;
+    batchEpochId?: string;
+    batchTx?: string;
   };
 }
 
@@ -154,7 +148,7 @@ export interface RestingOrder {
   limitPrice: number;
   commitmentHash: string;
   createdAt: string;
-  /** Cardano L1 proof-of-existence for the commitment (once anchored). */
+  /** On-chain proof-of-existence for the commitment, when the epoch settled. */
   commitAnchor?: { txHash: string; at: string };
 }
 
@@ -174,7 +168,7 @@ export interface JobStep {
 
 export interface Job {
   id: string;
-  kind: "commit" | "execute" | "close" | "faucet" | "withdraw";
+  kind: "commit" | "execute" | "close";
   refId: string;
   status: "running" | "complete" | "error";
   steps: JobStep[];
@@ -293,7 +287,7 @@ export interface Disclosure {
   subject: "order";
   orderId: string;
   audience: string;
-  /** the value published on Midnight (and mirrored in the Cardano anchor). */
+  /** the commitment published for this order (recorded in the on-chain batch). */
   commitment: string;
   /** the opened preimage — share ONLY with the intended auditor. */
   revealed: DisclosureRevealed;
@@ -346,7 +340,7 @@ export interface Solvency {
   surplusUsd: number;
   collateralizationRatio: number | null;
   vaultAddress: string;
-  dusdUnit: string;
+  collateralAddress: string;
   vaultUtxos: number;
   attestation: string;
   at: string;
@@ -376,6 +370,8 @@ export interface BatchDemo {
     victimExtraCostUsd: number;
   };
   sequential: { botProfitUsd: number; victimExtraCostUsd: number; victimSlippageBps: number };
+  /** How the two arms were measured — shown so the comparison is auditable. */
+  methodology: string;
   headline: string;
 }
 
@@ -549,7 +545,7 @@ export const operator = {
       { orderId },
     ),
 
-  /** Anchor an order's commitment on Cardano L1 — public proof-of-existence, contents hidden. */
+  /** Per-order L1 anchoring is not used on Flare — the batch records membership instead. */
   anchorCommit: (orderId: string) =>
     postSigned<{ success: boolean; txHash: string; explorerUrl: string; order: Order }>(
       `/orders/${encodeURIComponent(orderId)}/anchor-commit`,

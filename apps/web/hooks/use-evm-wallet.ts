@@ -8,8 +8,7 @@ import { defineChain } from "viem";
  * Flare Coston2 wallet connection over EIP-1193 (MetaMask, Rabby, Brave, …).
  *
  * dorr settles on Flare and margins in FXRP, an ERC-20 — so the wallet has to be
- * an EVM wallet. This replaces the previous Cardano CIP-30 (Mesh/Lace)
- * connection, which could neither hold FXRP nor sign a Flare transaction.
+ * an EVM wallet on Coston2.
  */
 
 export const COSTON2_CHAIN_ID = 114;

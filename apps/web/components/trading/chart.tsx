@@ -24,12 +24,17 @@ import { useMarketSelection } from "@/context/market-context";
 import { useMarkets } from "@/hooks/use-operator";
 import { MarketIcon } from "./market-icon";
 
-/** Candle bucket sizes (seconds) — the operator polls every 3s, so small buckets fill fast. */
+/**
+ * Candle buckets. The floor is 1 minute because that is the resolution of the
+ * history we can prove: the operator reconstructs bars by reading the FTSO v2
+ * feed at past block heights, one sample per minute. Offering a 5s bucket would
+ * mean plotting 1-minute history on a 5-second axis — thin, gappy bars and a
+ * chart that disagrees with itself.
+ */
 const TIMEFRAMES = [
-  { label: "5s", sec: 5 },
-  { label: "15s", sec: 15 },
   { label: "1m", sec: 60 },
   { label: "5m", sec: 300 },
+  { label: "15m", sec: 900 },
 ] as const;
 
 interface Candle {
@@ -45,18 +50,17 @@ type CandleStore = Map<string, Candle[]>;
 
 /** How far back to seed, in seconds, per bucket (bigger buckets → longer history). */
 function backfillWindowSec(bucketSec: number): number {
-  if (bucketSec >= 300) return 24 * 3600; // 5m bars over ~24h
-  if (bucketSec >= 60) return 6 * 3600; // 1m bars over ~6h
-  return 2 * 3600; // sub-minute: last ~2h
+  if (bucketSec >= 900) return 6 * 3600; // 15m bars over the full reconstructed window
+  if (bucketSec >= 300) return 6 * 3600; // 5m bars over ~6h
+  return 3 * 3600; // 1m bars over ~3h
 }
 
 /**
  * Seed prior candles from the operator's own FTSO v2 history — the same feed that
  * prices fills and that `DorrBatchSettlement` re-reads on-chain, so the chart and
  * the settlement layer can never disagree. The operator stores 1-minute bars and
- * aggregates them to the requested bucket; sub-minute views seed from 1m and then
- * extend with live ticks. Returns [] on any failure and the caller falls back to
- * live-only rather than reaching for a third-party price API.
+ * aggregates them to the requested bucket. Returns [] on any failure and the
+ * caller falls back to live-only rather than reaching for a third-party API.
  */
 async function fetchBackfill(marketId: string, bucketSec: number, signal: AbortSignal): Promise<Candle[]> {
   const requested = Math.max(60, bucketSec);
@@ -105,7 +109,7 @@ export default function TradingChart() {
   const { selectedMarketId, setSelectedMarketId } = useMarketSelection();
   const { data: markets, isError } = useMarkets();
   const [selectorOpen, setSelectorOpen] = useState(false);
-  const [bucketSec, setBucketSec] = useState<number>(15);
+  const [bucketSec, setBucketSec] = useState<number>(300);
 
   const market = markets?.find((m) => m.id === selectedMarketId);
   const price = market?.markPrice ?? market?.indexPrice ?? null;
@@ -125,8 +129,8 @@ export default function TradingChart() {
         vertLines: { color: "rgba(120,120,120,0.12)" },
         horzLines: { color: "rgba(120,120,120,0.12)" },
       },
-      timeScale: { timeVisible: true, secondsVisible: true, borderVisible: false },
-      // Tight autoscale so small (sub-bp) ADA moves fill the pane instead of
+      timeScale: { timeVisible: true, secondsVisible: false, borderVisible: false },
+      // Tight autoscale so small (sub-bp) FLR moves fill the pane instead of
       // reading as a flat line against a wide fixed range.
       rightPriceScale: {
         borderVisible: false,

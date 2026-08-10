@@ -143,6 +143,8 @@ export interface BatchDemoResult {
   };
   /** the same sandwich on a sequential (transparent) DEX, for contrast */
   sequential: { botProfitUsd: number; victimExtraCostUsd: number; victimSlippageBps: number };
+  /** How the two arms were measured — surfaced so the comparison is auditable. */
+  methodology: string;
   headline: string;
 }
 
@@ -209,6 +211,14 @@ export function runBatchAuctionDemo(p: {
   const victimExtraCostUsd = (victimPriceWithBot - victimPriceWithoutBot) * victimSize * dir;
 
   // Contrast: the same sandwich on a sequential/transparent venue.
+  //
+  // Both arms are evaluated against the SAME starting reserves — that is what
+  // makes this a controlled comparison rather than a race. Running the
+  // sequential arm as live fills would move the pool before the batch arm read
+  // it, so the two numbers would no longer be measuring the same market. The
+  // vAMM math is identical either way (`scratchFill` is `fill` without the
+  // write); only the reserves it is applied to are a copy. The Attack Lab, which
+  // is not a paired comparison, does run live fills.
   const seq = runAbDemo({ marketId: p.marketId, side, marginUsd, leverage, botMultiple, mode: "sim" });
 
   return {
@@ -239,6 +249,10 @@ export function runBatchAuctionDemo(p: {
       victimExtraCostUsd: seq.public.victimExtraCostUsd,
       victimSlippageBps: seq.public.victimSlippageBps,
     },
+    methodology:
+      "Both arms are cleared against the same live vAMM reserves, so the only variable is the " +
+      "market design. Neither arm mutates the pool — a paired comparison would be biased if one " +
+      "side moved the market before the other read it.",
     headline:
       `Uniform-price batch: every order in the epoch clears at ${cleared.clearingPrice.toFixed(6)}. ` +
       `A bot that inserts a front-run + back-run pays and receives the SAME price — profit $${botProfitUsd.toFixed(2)}. ` +

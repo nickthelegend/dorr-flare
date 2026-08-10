@@ -475,14 +475,15 @@ export default function Portfolio() {
                           onClose={handleClose}
                         />
                       </div>
-                    ) : p.settlement?.cardanoAnchorTx ? (
+                    ) : p.settlement?.batchTx ? (
                       <a
-                        href={explorerTx(p.settlement.cardanoAnchorTx)}
+                        href={explorerTx(p.settlement.batchTx)}
                         target="_blank"
                         rel="noreferrer"
                         className="text-primary underline inline-flex items-center gap-0.5 text-[10px]"
+                        title="the on-chain batch this position settled in"
                       >
-                        anchor <ExternalLink className="w-2.5 h-2.5" />
+                        batch <ExternalLink className="w-2.5 h-2.5" />
                       </a>
                     ) : (
                       <span className={cn("text-[10px]", p.status === "liquidated" ? "text-destructive" : "text-muted-foreground")}>

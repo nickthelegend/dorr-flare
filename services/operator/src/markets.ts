@@ -17,7 +17,12 @@ export interface MarketDef {
   base: string;
   /** FTSO v2 feed id (bytes21: 0x01 category + ASCII name, zero-padded). */
   feedId: string;
-  /** Virtual AMM depth: quote-side notional (USD) of the virtual pool. */
+  /**
+   * Virtual AMM depth: quote-side notional (USD) of the virtual pool. Set per
+   * market to track real relative liquidity — two markets sharing a depth would
+   * quote identical slippage for the same order, which is neither true nor
+   * convincing.
+   */
   vammDepthUsd: number;
   /** Recenter vAMM to the oracle when drift exceeds this many bps. */
   recenterBps: number;
@@ -33,7 +38,7 @@ export const MARKETS: MarketDef[] = [
     symbol: "FLR/USD",
     base: "FLR",
     feedId: "0x01464c522f55534400000000000000000000000000",
-    vammDepthUsd: 2_000_000,
+    vammDepthUsd: 1_500_000,
     recenterBps: 5,
     maxLeverage: 20,
     maxOiUsd: 500_000,
@@ -44,7 +49,7 @@ export const MARKETS: MarketDef[] = [
     symbol: "XRP/USD",
     base: "XRP",
     feedId: "0x015852502f55534400000000000000000000000000",
-    vammDepthUsd: 5_000_000,
+    vammDepthUsd: 6_000_000,
     recenterBps: 5,
     maxLeverage: 20,
     maxOiUsd: 1_250_000,
@@ -54,7 +59,7 @@ export const MARKETS: MarketDef[] = [
     symbol: "BTC/USD",
     base: "BTC",
     feedId: "0x014254432f55534400000000000000000000000000",
-    vammDepthUsd: 10_000_000,
+    vammDepthUsd: 12_000_000,
     recenterBps: 5,
     maxLeverage: 20,
     maxOiUsd: 2_500_000,
@@ -64,7 +69,7 @@ export const MARKETS: MarketDef[] = [
     symbol: "ETH/USD",
     base: "ETH",
     feedId: "0x014554482f55534400000000000000000000000000",
-    vammDepthUsd: 10_000_000,
+    vammDepthUsd: 8_000_000,
     recenterBps: 5,
     maxLeverage: 20,
     maxOiUsd: 2_500_000,
@@ -74,7 +79,7 @@ export const MARKETS: MarketDef[] = [
     symbol: "SOL/USD",
     base: "SOL",
     feedId: "0x01534f4c2f55534400000000000000000000000000",
-    vammDepthUsd: 5_000_000,
+    vammDepthUsd: 4_000_000,
     recenterBps: 5,
     maxLeverage: 20,
     maxOiUsd: 1_250_000,
@@ -84,7 +89,7 @@ export const MARKETS: MarketDef[] = [
     symbol: "DOGE/USD",
     base: "DOGE",
     feedId: "0x01444f47452f555344000000000000000000000000",
-    vammDepthUsd: 2_000_000,
+    vammDepthUsd: 2_500_000,
     recenterBps: 5,
     maxLeverage: 20,
     maxOiUsd: 500_000,
