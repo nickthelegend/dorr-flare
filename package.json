@@ -13,8 +13,5 @@
     "web": "bun run --cwd apps/web dev",
     "operator": "bun run --cwd services/operator dev",
     "gen:wallet": "bun run tools/scripts/gen-wallet.ts"
-  },
-  "overrides": {
-    "@noble/hashes": "1.3.3"
   }
 }

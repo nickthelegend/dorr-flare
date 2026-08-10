@@ -1,6 +1,6 @@
 /**
- * dorr v1 markets — 5 perps, all quoted in dUSD, priced from Pyth Hermes (off-chain).
- * Feed ids are Pyth price-feed identifiers (verified at boot against Hermes;
+ * dorr v1 markets — 5 perps, all quoted in dUSD, priced from Flare FTSO v2 (on-chain oracle).
+ * Feed ids are FTSO v2 bytes21 identifiers (verified at boot against the on-chain oracle;
  * a failing id is logged loudly and the market is disabled rather than mispriced).
  */
 export interface MarketDef {
@@ -8,8 +8,8 @@ export interface MarketDef {
   id: string;
   symbol: string;
   base: string;
-  /** Pyth price feed id (hex, no 0x prefix required by Hermes v2). */
-  pythFeedId: string;
+  /** FTSO v2 feed id (bytes21: 0x01 category + ASCII name, zero-padded). */
+  feedId: string;
   /** Virtual AMM depth: quote-side notional (dUSD) of the virtual pool. */
   vammDepthUsd: number;
   /** Recenter vAMM to Pyth when drift exceeds this many bps. */
@@ -24,7 +24,7 @@ export const MARKETS: MarketDef[] = [
     id: "ADA-dUSD",
     symbol: "ADA/dUSD",
     base: "ADA",
-    pythFeedId: "2a01deaec9e51a579277b34b122399984d0bbf57e2458a7e42fecd2829867a0d",
+    feedId: "0x014144412f55534400000000000000000000000000", // FTSO v2 ADA/USD,
     vammDepthUsd: 2_000_000,
     recenterBps: 5,
     maxLeverage: 20,
@@ -34,7 +34,7 @@ export const MARKETS: MarketDef[] = [
     id: "BTC-dUSD",
     symbol: "BTC/dUSD",
     base: "BTC",
-    pythFeedId: "e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
+    feedId: "0x014254432f55534400000000000000000000000000", // FTSO v2 BTC/USD,
     vammDepthUsd: 10_000_000,
     recenterBps: 5,
     maxLeverage: 20,
@@ -44,7 +44,7 @@ export const MARKETS: MarketDef[] = [
     id: "ETH-dUSD",
     symbol: "ETH/dUSD",
     base: "ETH",
-    pythFeedId: "ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
+    feedId: "0x014554482f55534400000000000000000000000000", // FTSO v2 ETH/USD,
     vammDepthUsd: 10_000_000,
     recenterBps: 5,
     maxLeverage: 20,
@@ -54,7 +54,7 @@ export const MARKETS: MarketDef[] = [
     id: "SOL-dUSD",
     symbol: "SOL/dUSD",
     base: "SOL",
-    pythFeedId: "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
+    feedId: "0x01534f4c2f55534400000000000000000000000000", // FTSO v2 SOL/USD,
     vammDepthUsd: 5_000_000,
     recenterBps: 5,
     maxLeverage: 20,
@@ -64,7 +64,7 @@ export const MARKETS: MarketDef[] = [
     id: "DOGE-dUSD",
     symbol: "DOGE/dUSD",
     base: "DOGE",
-    pythFeedId: "dcef50dd0a4cd2dcc17e45df1676dcb336a11a61c69df7a0299b0150c672d25c",
+    feedId: "0x01444f47452f555344000000000000000000000000", // FTSO v2 DOGE/USD,
     vammDepthUsd: 2_000_000,
     recenterBps: 5,
     maxLeverage: 20,

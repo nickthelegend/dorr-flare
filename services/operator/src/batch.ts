@@ -20,7 +20,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { orderCommitmentHex } from "@dorr/engine/order/commitment";
 import { marketById } from "./markets.js";
-import { getPrice } from "./pyth.js";
+import { getPrice } from "./ftso.js";
 import { getPool, type VammState } from "./vamm.js";
 import { runAbDemo } from "./demo.js";
 
@@ -161,7 +161,7 @@ export function runBatchAuctionDemo(p: {
 }): BatchDemoResult {
   const m = marketById(p.marketId);
   if (!m) throw new Error(`unknown market ${p.marketId}`);
-  const idx = getPrice(m.pythFeedId);
+  const idx = getPrice(m.feedId);
   const live = getPool(p.marketId);
   if (!idx || !live) throw new Error(`market ${p.marketId} not ready`);
 

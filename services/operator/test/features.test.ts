@@ -10,7 +10,7 @@ import { test, expect, beforeAll } from "bun:test";
 
 const USER = "addr_test1qqfeatureuser";
 let app: { request: (path: string, init?: RequestInit) => Promise<Response> };
-let pyth: typeof import("../src/pyth.js");
+let pyth: typeof import("../src/ftso.js");
 let vamm: typeof import("../src/vamm.js");
 let trading: typeof import("../src/trading.js");
 let markets: typeof import("../src/markets.js");
@@ -36,11 +36,11 @@ function setPrice(p: number) {
 
 beforeAll(async () => {
   markets = await import("../src/markets.js");
-  pyth = await import("../src/pyth.js");
+  pyth = await import("../src/ftso.js");
   vamm = await import("../src/vamm.js");
   trading = await import("../src/trading.js");
   await (await import("../src/state.js")).loadState();
-  adaFeed = markets.marketById(ADA)!.pythFeedId;
+  adaFeed = markets.marketById(ADA)!.feedId;
   setPrice(0.15);
   app = (await import("../src/routes.js")).app;
 });

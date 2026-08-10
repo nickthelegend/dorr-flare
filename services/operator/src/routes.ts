@@ -4,7 +4,7 @@ import { cors } from "hono/cors";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { MARKETS, marketById } from "./markets.js";
 import { fundingRate } from "./trading-math.js";
-import { getPrice, isFeedDisabled } from "./pyth.js";
+import { getPrice, isFeedDisabled } from "./ftso.js";
 import * as vamm from "./vamm.js";
 import { account, getState, persist, logEvent } from "./state.js";
 import { getJob } from "./jobs.js";
@@ -12,6 +12,12 @@ import { commitOrder, executeOrder, closePosition, cancelOrder, anchorOrderCommi
 import { runAbDemo, runAttackLab } from "./demo.js";
 import { runBatchAuctionDemo, clearBatchUniform, batchDigest } from "./batch.js";
 import { runSealedDemo, currentRound, secondsUntilRound, roundForTime } from "./sealbid.js";
+import {
+  flareConfigured, vaultSolvency, fxrpInfo, vaultAccount, epochCount,
+  getBatchOnChain, explorerAddress, relayerBalance,
+} from "./flare.js";
+import { enclaveConfigured, enclaveAddress } from "./attestation.js";
+import { resolveFtsoAddress } from "./ftso.js";
 import { buildDisclosure, verifyDisclosure } from "./disclosure.js";
 import {
   cardanoReady,
@@ -64,7 +70,7 @@ app.get("/health", async (c) => {
 // ─── markets + prices ────────────────────────────────────────────────────────
 app.get("/markets", (c) => {
   const out = MARKETS.map((m) => {
-    const idx = getPrice(m.pythFeedId);
+    const idx = getPrice(m.feedId);
     const pool = vamm.snapshot(m.id);
     return {
       id: m.id,
@@ -72,7 +78,7 @@ app.get("/markets", (c) => {
       base: m.base,
       maxLeverage: m.maxLeverage,
       maxOiUsd: m.maxOiUsd,
-      disabled: isFeedDisabled(m.pythFeedId),
+      disabled: isFeedDisabled(m.feedId),
       indexPrice: idx?.price ?? null,
       markPrice: pool?.markPrice ?? null,
       publishTime: idx?.publishTime ?? null,
@@ -236,7 +242,7 @@ app.get("/positions/:address", (c) => {
     .filter((p) => p.address === address)
     .map((p) => {
       const m = marketById(p.marketId);
-      const idx = m ? getPrice(m.pythFeedId) : undefined;
+      const idx = m ? getPrice(m.feedId) : undefined;
       const mark = idx?.price ?? p.entryPrice;
       return {
         ...p,
@@ -558,6 +564,64 @@ app.get("/batch/epoch", async (c) => {
   }
 });
 
+// Flare settlement layer — contracts, collateral, oracle, enclave (evidence panel)
+app.get("/flare/info", async (c) => {
+  if (!flareConfigured()) return bad(c, "Flare contracts not configured", 503);
+  try {
+    const [fx, sol, ftso, epochs, relayer] = await Promise.all([
+      fxrpInfo(),
+      vaultSolvency(),
+      resolveFtsoAddress(),
+      epochCount(),
+      relayerBalance(),
+    ]);
+    return c.json({
+      network: "flare-coston2",
+      chainId: env.flare.chainId,
+      explorer: env.flare.explorer,
+      contracts: {
+        vault: sol.vaultAddress,
+        settlement: env.flare.settlement,
+        teeVerifier: env.flare.teeVerifier,
+        ftsoV2: ftso,
+      },
+      collateral: { symbol: fx.symbol, address: fx.address, decimals: fx.decimals, totalSupply: fx.totalSupply },
+      solvency: { solvent: sol.solvent, reservesFxrp: sol.reservesFxrp, liabilitiesFxrp: sol.liabilitiesFxrp },
+      enclave: enclaveConfigured()
+        ? { configured: true, signer: enclaveAddress(), teeId: env.flare.teeId, measurement: env.flare.teeMeasurement }
+        : { configured: false },
+      batchesSettled: epochs,
+      relayer,
+      explorerUrls: {
+        vault: explorerAddress(sol.vaultAddress),
+        settlement: explorerAddress(env.flare.settlement),
+      },
+    });
+  } catch (e) {
+    return bad(c, `flare info failed: ${String(e).slice(0, 200)}`, 500);
+  }
+});
+
+// a settled epoch as recorded on Flare
+app.get("/flare/batch/:epochId", async (c) => {
+  if (!flareConfigured()) return bad(c, "Flare contracts not configured", 503);
+  try {
+    return c.json(await getBatchOnChain(c.req.param("epochId") as `0x${string}`));
+  } catch (e) {
+    return bad(c, String(e instanceof Error ? e.message : e), 500);
+  }
+});
+
+// a trader's on-chain FXRP margin account
+app.get("/flare/account/:address", async (c) => {
+  if (!flareConfigured()) return bad(c, "Flare contracts not configured", 503);
+  try {
+    return c.json(await vaultAccount(c.req.param("address")));
+  } catch (e) {
+    return bad(c, String(e instanceof Error ? e.message : e), 500);
+  }
+});
+
 // activity log — the trader's own timeline (commit/execute/close/limit/SL-TP/anchor/…)
 app.get("/events", (c) => {
   const address = c.req.query("address");
@@ -606,7 +670,7 @@ app.get("/stats", (c) => {
   const st = getState();
   const open = st.positions.filter((p) => p.status === "open");
   const perMarket = MARKETS.map((m) => {
-    const idx = getPrice(m.pythFeedId);
+    const idx = getPrice(m.feedId);
     const mark = vamm.markPrice(m.id);
     const px = mark ?? idx?.price ?? 0;
     const mine = open.filter((p) => p.marketId === m.id);
@@ -663,6 +727,36 @@ app.get("/ops/balances", async (c) => {
 app.get("/ops/solvency", async (c) => {
   const st = getState();
   const liabilitiesUsd = Object.values(st.accounts).reduce((s, a) => s + a.balance, 0);
+
+  // Flare is the settlement layer: reserves are the real FXRP held by DorrVault
+  // on Coston2. Anyone can recompute this from vaultAddress + fxrpAddress.
+  if (flareConfigured()) {
+    try {
+      const sol = await vaultSolvency();
+      const at = new Date().toISOString();
+      const attestation = createHash("sha256")
+        .update(`dorr-solvency:${sol.vaultAddress}:${sol.reservesFxrp.toFixed(6)}:${sol.liabilitiesFxrp.toFixed(6)}:${at}`)
+        .digest("hex");
+      return c.json({
+        solvent: sol.solvent,
+        reservesUsd: sol.reservesFxrp,
+        liabilitiesUsd: sol.liabilitiesFxrp,
+        surplusUsd: sol.reservesFxrp - sol.liabilitiesFxrp,
+        collateralizationRatio: sol.collateralizationRatio,
+        vaultAddress: sol.vaultAddress,
+        dusdUnit: sol.fxrpAddress,
+        collateral: "FXRP",
+        chain: "flare-coston2",
+        explorerUrl: explorerAddress(sol.vaultAddress),
+        attestation,
+        at,
+        note: "reserves are the live on-chain FXRP held by DorrVault — recompute and verify independently",
+      });
+    } catch (e) {
+      return bad(c, `solvency check failed: ${String(e).slice(0, 200)}`, 500);
+    }
+  }
+
   try {
     const ctx = await initCardano();
     const reserves = await vaultReserves();

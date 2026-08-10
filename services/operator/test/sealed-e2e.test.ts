@@ -14,7 +14,7 @@ import { sealOrder, commitmentFor, roundForTime, type OrderPreimage } from "../s
 const A = "addr_test1sealedA";
 const B = "addr_test1sealedB";
 let app: { request: (path: string, init?: RequestInit) => Promise<Response> };
-let pyth: typeof import("../src/pyth.js");
+let pyth: typeof import("../src/ftso.js");
 let vamm: typeof import("../src/vamm.js");
 let trading: typeof import("../src/trading.js");
 let markets: typeof import("../src/markets.js");
@@ -27,11 +27,11 @@ const get = (p: string) => app.request(p);
 
 beforeAll(async () => {
   markets = await import("../src/markets.js");
-  pyth = await import("../src/pyth.js");
+  pyth = await import("../src/ftso.js");
   vamm = await import("../src/vamm.js");
   trading = await import("../src/trading.js");
   await (await import("../src/state.js")).loadState();
-  pyth._setPriceForTest(markets.marketById(ADA)!.pythFeedId, 0.15);
+  pyth._setPriceForTest(markets.marketById(ADA)!.feedId, 0.15);
   vamm.seedPool(markets.marketById(ADA)!, 0.15);
   app = (await import("../src/routes.js")).app;
 });
@@ -50,7 +50,7 @@ test("SEALED E2E — sealed orders clear at ONE price into real positions; margi
   await post("/demo/reset");
   await post("/demo/seed", { address: A, dusd: 100_000 });
   await post("/demo/seed", { address: B, dusd: 100_000 });
-  pyth._setPriceForTest(markets.marketById(ADA)!.pythFeedId, 0.15);
+  pyth._setPriceForTest(markets.marketById(ADA)!.feedId, 0.15);
   vamm.seedPool(markets.marketById(ADA)!, 0.15);
 
   const pastRound = await roundForTime(Date.now() - 60_000); // already unsealed
@@ -99,7 +99,7 @@ test("SEALED E2E — sealed orders clear at ONE price into real positions; margi
 test("SEALED E2E — a preimage that doesn't match its commitment is dropped, margin released", async () => {
   await post("/demo/reset");
   await post("/demo/seed", { address: A, dusd: 50_000 });
-  pyth._setPriceForTest(markets.marketById(ADA)!.pythFeedId, 0.15);
+  pyth._setPriceForTest(markets.marketById(ADA)!.feedId, 0.15);
   vamm.seedPool(markets.marketById(ADA)!, 0.15);
 
   const pastRound = await roundForTime(Date.now() - 60_000);
@@ -123,7 +123,7 @@ test("SEALED E2E — a preimage that doesn't match its commitment is dropped, ma
 test("SEALED E2E — an order sealed to a FUTURE round stays sealed (operator can't settle it early)", async () => {
   await post("/demo/reset");
   await post("/demo/seed", { address: A, dusd: 50_000 });
-  pyth._setPriceForTest(markets.marketById(ADA)!.pythFeedId, 0.15);
+  pyth._setPriceForTest(markets.marketById(ADA)!.feedId, 0.15);
   vamm.seedPool(markets.marketById(ADA)!, 0.15);
 
   const futureRound = await roundForTime(Date.now() + 3_600_000); // ~1h out

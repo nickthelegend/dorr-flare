@@ -1,0 +1,9 @@
+{
+  "network": "coston2",
+  "chainId": 114,
+  "fxrp": "0x0b6A3645c240605887a5532109323A3E12273dc7",
+  "teeVerifier": "0x578D75dDbce7fBB05072b733F372De2241d698aE",
+  "vault": "0x65b705A49778b9d7bD741A0A979162393c699a98",
+  "settlement": "0x0F99f3a1486D167A9c903F336f1b56869c30e583",
+  "deployer": "0x0b6A564E9dC664b9223FFDAe35dD585cfC010B12"
+}

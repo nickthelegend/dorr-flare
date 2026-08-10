@@ -30,14 +30,14 @@ async function pollJob(id: string, tries = 40): Promise<any> {
 
 beforeAll(async () => {
   const markets = await import("../src/markets.js");
-  const pyth = await import("../src/pyth.js");
+  const pyth = await import("../src/ftso.js");
   const vamm = await import("../src/vamm.js");
   const { loadState } = await import("../src/state.js");
   loadState();
   // Deterministic prices + seeded pools for every market (offline).
   for (const m of markets.MARKETS) {
     const price = m.base === "BTC" ? 60000 : m.base === "ETH" ? 1600 : m.base === "SOL" ? 78 : m.base === "ADA" ? 0.15 : 0.07;
-    pyth._setPriceForTest(m.pythFeedId, price);
+    pyth._setPriceForTest(m.feedId, price);
     vamm.seedPool(m, price);
   }
   app = (await import("../src/routes.js")).app;

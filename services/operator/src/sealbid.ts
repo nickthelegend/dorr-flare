@@ -24,7 +24,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { orderCommitmentHex } from "@dorr/engine/order/commitment";
 import { clearBatchUniform, type BatchOrder, type BatchReserves, type BatchClearing } from "./batch.js";
 import { marketById } from "./markets.js";
-import { getPrice } from "./pyth.js";
+import { getPrice } from "./ftso.js";
 import { getPool } from "./vamm.js";
 
 /** drand quicknet — timelock-enabled (unchained, G1 sigs, 3s rounds). */
@@ -248,7 +248,7 @@ export async function runSealedDemo(p: {
 }): Promise<SealedDemoResult> {
   const m = marketById(p.marketId);
   if (!m) throw new Error(`unknown market ${p.marketId}`);
-  const idx = getPrice(m.pythFeedId);
+  const idx = getPrice(m.feedId);
   const pool = getPool(p.marketId);
   if (!idx || !pool) throw new Error(`market ${p.marketId} not ready`);
 

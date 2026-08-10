@@ -6,7 +6,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { orderCommitmentHex } from "@dorr/engine/order/commitment";
 import { marketById } from "./markets.js";
-import { getPrice, isFeedDisabled } from "./pyth.js";
+import { getPrice, isFeedDisabled } from "./ftso.js";
 import * as vamm from "./vamm.js";
 import {
   account,
@@ -57,8 +57,8 @@ function traderSkFor(order: { id: string; address: string; nonce: string }): str
 function freshIndexPrice(marketId: string): number {
   const m = marketById(marketId);
   if (!m) throw new Error(`unknown market ${marketId}`);
-  if (isFeedDisabled(m.pythFeedId)) throw new Error(`market ${marketId} disabled (feed failed)`);
-  const p = getPrice(m.pythFeedId);
+  if (isFeedDisabled(m.feedId)) throw new Error(`market ${marketId} disabled (feed failed)`);
+  const p = getPrice(m.feedId);
   if (!p) throw new Error(`no price yet for ${marketId}`);
   if (Date.now() - p.fetchedAt > PRICE_STALE_MS) throw new Error(`stale price for ${marketId}`);
   return p.price;
@@ -241,7 +241,7 @@ export function executeOrder(orderId: string): { position: DorrPosition; jobId: 
   // far from the Pyth index (venue manipulation / stalled recenter). The pool
   // normally tracks the oracle within a few bps, so a large gap is anomalous.
   const mark = vamm.markPrice(order.marketId);
-  const idx = getPrice(marketById(order.marketId)!.pythFeedId)?.price;
+  const idx = getPrice(marketById(order.marketId)!.feedId)?.price;
   if (mark != null && idx != null && oracleDiverged(mark, idx)) {
     throw new Error(
       `oracle divergence ${divergenceBps(mark, idx).toFixed(1)}bps exceeds ${MAX_ORACLE_DIVERGENCE_BPS}bps — fill refused (venue mark ≠ oracle)`,
@@ -505,7 +505,7 @@ export function applyFundingTick(): void {
   for (const marketId of new Set(st.positions.filter((x) => x.status === "open").map((x) => x.marketId))) {
     const m = marketById(marketId);
     if (!m) continue;
-    const idx = getPrice(m.pythFeedId);
+    const idx = getPrice(m.feedId);
     const mark = vamm.markPrice(marketId);
     if (!idx || !mark) continue;
     const rate = fundingRate(mark, idx.price);
@@ -530,7 +530,7 @@ export function scanLiquidations(): string[] {
   for (const pos of st.positions.filter((x) => x.status === "open")) {
     const m = marketById(pos.marketId);
     if (!m) continue;
-    const p = getPrice(m.pythFeedId);
+    const p = getPrice(m.feedId);
     if (!p) continue;
     const ratio = equityRatio(pos.marginUsd, unrealizedPnl(pos, p.price), pos.fundingPaid, pos.sizeBase, p.price);
     if (isLiquidatable(ratio)) {
@@ -566,7 +566,7 @@ export function adjustMargin(positionId: string, deltaUsd: number): DorrPosition
     const remove = -deltaUsd;
     if (remove >= pos.marginUsd) throw new Error("cannot remove all margin");
     const m = marketById(pos.marketId);
-    const mark = (m && getPrice(m.pythFeedId)?.price) || pos.entryPrice;
+    const mark = (m && getPrice(m.feedId)?.price) || pos.entryPrice;
     const newMargin = pos.marginUsd - remove;
     const ratio = equityRatio(newMargin, unrealizedPnl(pos, mark), pos.fundingPaid, pos.sizeBase, mark);
     if (ratio < MAINTENANCE_MARGIN * 1.5) throw new Error("removing that much margin would risk liquidation");
@@ -861,7 +861,7 @@ export function scanLimitOrders(): string[] {
   for (const o of st.orders.filter((x) => x.status === "committed" && x.orderType === "limit" && x.limitPrice)) {
     const m = marketById(o.marketId);
     if (!m) continue;
-    const p = getPrice(m.pythFeedId);
+    const p = getPrice(m.feedId);
     if (!p) continue;
     if (limitTriggered(o.side, o.limitPrice!, p.price)) {
       try {
@@ -884,7 +884,7 @@ export function scanStops(): Array<{ id: string; reason: string }> {
   )) {
     const m = marketById(pos.marketId);
     if (!m) continue;
-    const p = getPrice(m.pythFeedId);
+    const p = getPrice(m.feedId);
     if (!p) continue;
     const hit = stopTriggered(pos.side, p.price, pos.stopLossPrice, pos.takeProfitPrice);
     if (hit) {

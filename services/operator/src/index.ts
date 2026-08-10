@@ -2,7 +2,7 @@ import { serve } from "@hono/node-server";
 import { env } from "./env.js";
 import { app } from "./routes.js";
 import { MARKETS } from "./markets.js";
-import { validateFeeds, startPricePolling, getPrice } from "./pyth.js";
+import { validateFeeds, startPricePolling, getPrice } from "./ftso.js";
 import { seedPool, recenter } from "./vamm.js";
 import { loadState } from "./state.js";
 import { applyFundingTick, scanLiquidations, scanLimitOrders, scanStops, settleSealedBatch } from "./trading.js";
@@ -26,7 +26,7 @@ async function main() {
   const seeded = new Set<string>();
   setInterval(() => {
     for (const m of MARKETS) {
-      const p = getPrice(m.pythFeedId);
+      const p = getPrice(m.feedId);
       if (!p) continue;
       if (!seeded.has(m.id)) {
         seedPool(m, p.price);

@@ -17,7 +17,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { orderCommitmentHex } from "@dorr/engine/order/commitment";
 import { marketById } from "./markets.js";
-import { getPrice, isFeedDisabled } from "./pyth.js";
+import { getPrice, isFeedDisabled } from "./ftso.js";
 import {
   getPool,
   fill as liveFill,
@@ -95,8 +95,8 @@ export interface AbParams {
 export function runAbDemo(p: AbParams): AbResult {
   const m = marketById(p.marketId);
   if (!m) throw new Error(`unknown market ${p.marketId}`);
-  if (isFeedDisabled(m.pythFeedId)) throw new Error(`market ${p.marketId} disabled`);
-  const idx = getPrice(m.pythFeedId);
+  if (isFeedDisabled(m.feedId)) throw new Error(`market ${p.marketId} disabled`);
+  const idx = getPrice(m.feedId);
   const live = getPool(p.marketId);
   if (!idx || !live) throw new Error(`market ${p.marketId} not ready`);
 
