@@ -14,22 +14,11 @@ import { runBatchAuctionDemo, clearBatchUniform, batchDigest } from "./batch.js"
 import { runSealedDemo, currentRound, secondsUntilRound, roundForTime } from "./sealbid.js";
 import {
   flareConfigured, vaultSolvency, fxrpInfo, vaultAccount, epochCount,
-  getBatchOnChain, explorerAddress, relayerBalance,
+  getBatchOnChain, explorerAddress, explorerTx, relayerBalance,
 } from "./flare.js";
 import { enclaveConfigured, enclaveAddress } from "./attestation.js";
 import { resolveFtsoAddress } from "./ftso.js";
 import { buildDisclosure, verifyDisclosure } from "./disclosure.js";
-import {
-  cardanoReady,
-  faucetMint,
-  initCardano,
-  operatorBalances,
-  pkhOf,
-  scanVaultDeposits,
-  vaultDatumFor,
-  vaultReserves,
-  vaultWithdraw,
-} from "./cardano.js";
 import { createJob, jobStep, completeJob, failJob } from "./jobs.js";
 import { verifyAuth, type AuthEnvelope } from "./auth.js";
 import { env } from "./env.js";
@@ -62,7 +51,8 @@ app.get("/health", async (c) => {
     ok: true,
     service: "dorr-operator",
     markets: MARKETS.length,
-    cardanoReady: cardanoReady(),
+    chain: "flare-coston2",
+    flareReady: flareConfigured(),
     now: new Date().toISOString(),
   });
 });
@@ -90,42 +80,89 @@ app.get("/markets", (c) => {
 
 // ─── vault / collateral ──────────────────────────────────────────────────────
 app.get("/vault/info", async (c) => {
-  const ctx = await initCardano();
-  const owner = c.req.query("address");
-  return c.json({
-    vaultAddress: ctx.vaultAddress,
-    ownerVaultAddress: ctx.ownerVaultAddress,
-    dusdPolicyId: ctx.dusdPolicyId,
-    dusdUnit: ctx.dusdUnit,
-    dusdDecimals: 6,
-    operatorAddress: ctx.operatorAddress,
-    anchorAddress: ctx.anchorAddress,
-    ...(owner ? { depositDatumCbor: vaultDatumFor(owner) } : {}),
-  });
-});
-
-app.post("/faucet", async (c) => {
-  const body = await c.req.json().catch(() => ({}));
-  const address = String(body.address || "");
-  const amount = Math.min(Number(body.amount || 10_000), 100_000);
-  if (!address.startsWith("addr_test1")) return bad(c, "address must be a preprod bech32 address");
-  const job = createJob("faucet", address);
-  const step = jobStep(job, `mint ${amount} FXRP → ${address.slice(0, 24)}…`);
-  try {
-    const txHash = await faucetMint(address, amount);
-    step.done({ txHash });
-    completeJob(job);
-    return c.json({ success: true, txHash, amount, jobId: job.id });
-  } catch (e) {
-    step.fail(String(e).slice(0, 300));
-    failJob(job, String(e).slice(0, 300));
-    return bad(c, `faucet failed: ${String(e).slice(0, 300)}`, 500);
+  if (flareConfigured()) {
+    try {
+      const [fx, sol] = await Promise.all([fxrpInfo(), vaultSolvency()]);
+      return c.json({
+        chain: "flare-coston2",
+        chainId: env.flare.chainId,
+        vaultAddress: sol.vaultAddress,
+        settlementAddress: env.flare.settlement,
+        collateral: {
+          symbol: fx.symbol,
+          address: fx.address,
+          decimals: fx.decimals,
+        },
+        explorerUrl: explorerAddress(sol.vaultAddress),
+        faucetUrl: "https://faucet.flare.network/coston2",
+        note: "deposit FXRP by approving the vault then calling deposit(uint256); only the depositor can withdraw",
+      });
+    } catch (e) {
+      return bad(c, `vault info unavailable: ${String(e).slice(0, 160)}`, 503);
+    }
   }
+  return bad(c, "vault not configured", 503);
 });
 
-app.get("/account/:address", (c) => {
+/**
+ * FXRP is a real asset on Coston2 — the operator holds no minting authority for
+ * it, so there is no operator-side faucet to hand out margin. Test FXRP comes
+ * from Flare's own faucet; this endpoint tells the caller exactly that instead
+ * of pretending to mint (or crediting unbacked margin, which would break the
+ * vault's solvency invariant).
+ */
+app.post("/faucet", (c) =>
+  c.json(
+    {
+      error: "dorr cannot mint FXRP — it is a real asset on Coston2.",
+      howTo:
+        "Claim test FXRP from Flare's faucet, then deposit it into the vault from the Collateral panel.",
+      faucetUrl: "https://faucet.flare.network/coston2",
+    },
+    501,
+  ),
+);
+
+/**
+ * Reconcile a trader's margin ledger against the on-chain DorrVault.
+ *
+ * The vault is authoritative for *collateral movements* — FXRP enters via the
+ * depositor's own `deposit()` and leaves only via their own `withdraw()`. It is
+ * NOT authoritative for the trading balance, because realized PnL from the vAMM
+ * lives in this off-chain ledger (v1 trusted-operator model). So we credit the
+ * *delta* against a per-account watermark: a new deposit adds to the tradable
+ * balance, a withdrawal subtracts, and accumulated PnL survives untouched.
+ *
+ * Returns the amount credited (positive for a deposit) so callers can log it.
+ */
+async function reconcileVault(address: string): Promise<number> {
+  if (!flareConfigured()) return 0;
+  const acct = account(address);
+  let onChain: number;
+  try {
+    onChain = (await vaultAccount(address)).balance;
+  } catch {
+    return 0; // vault unreadable — keep the last known balance rather than blanking it
+  }
+  if (acct.onChainSeen === undefined) {
+    // First sight of this account: adopt the on-chain balance as the starting point.
+    acct.onChainSeen = onChain;
+    if (acct.balance === 0 && onChain > 0) acct.balance = onChain;
+    persist();
+    return acct.balance;
+  }
+  const delta = onChain - acct.onChainSeen;
+  if (delta === 0) return 0;
+  acct.onChainSeen = onChain;
+  acct.balance += delta;
+  persist();
+  return delta;
+}
+
+app.get("/account/:address", async (c) => {
   const address = c.req.param("address");
   const acct = account(address);
+  await reconcileVault(address);
   persist();
   const positions = getState().positions.filter((p) => p.address === address);
   return c.json({
@@ -137,53 +174,47 @@ app.get("/account/:address", (c) => {
   });
 });
 
-/** Credit any new vault deposits attributable to this address (poll-friendly). */
+/** Credit any new on-chain vault deposits to the trader's margin (poll-friendly). */
 app.post("/deposits/sync", async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const address = String(body.address || "");
   if (!address) return bad(c, "address required");
-  const myPkh = pkhOf(address);
-  const deposits = await scanVaultDeposits();
+  if (!flareConfigured()) return bad(c, "vault not configured", 503);
+
+  const delta = await reconcileVault(address);
   const acct = account(address);
-  const credited: Array<{ utxoRef: string; dusd: number }> = [];
-  for (const d of deposits) {
-    if (d.ownerPkh !== myPkh) continue;
-    if (acct.creditedUtxos.includes(d.utxoRef)) continue;
-    acct.creditedUtxos.push(d.utxoRef);
-    acct.balance += d.dusd;
-    credited.push({ utxoRef: d.utxoRef, dusd: d.dusd });
+  if (delta > 0) {
+    logEvent({
+      type: "deposit",
+      address,
+      detail: `Deposited ${delta.toFixed(2)} FXRP to the margin vault`,
+      chain: "flare-coston2",
+    });
   }
-  persist();
-  const total = credited.reduce((s, d) => s + d.dusd, 0);
-  if (total > 0) logEvent({ type: "deposit", address, detail: `Deposited ${total.toFixed(2)} FXRP to the margin vault`, chain: "cardano" });
-  return c.json({ credited, balance: acct.balance, free: acct.balance - acct.locked });
+  return c.json({
+    credited: delta > 0 ? [{ amount: delta }] : [],
+    balance: acct.balance,
+    free: acct.balance - acct.locked,
+  });
 });
 
-app.post("/withdraw", async (c) => {
-  const body = await c.req.json().catch(() => ({}));
-  const address = String(body.address || "");
-  const amount = Number(body.amount || 0);
-  if (!address || !(amount > 0)) return bad(c, "address and positive amount required");
-  const authErr = checkAuth("withdraw", { address, amount }, body, address);
-  if (authErr) return bad(c, authErr, 401);
-  const acct = account(address);
-  if (amount > acct.balance - acct.locked) return bad(c, "insufficient free balance");
-  const job = createJob("withdraw", address);
-  const step = jobStep(job, `vault → ${amount} FXRP → ${address.slice(0, 24)}…`);
-  try {
-    const txHash = await vaultWithdraw(address, amount);
-    acct.balance -= amount;
-    persist();
-    logEvent({ type: "withdraw", address, detail: `Withdrew ${amount.toFixed(2)} FXRP from the vault`, txHash, chain: "cardano" });
-    step.done({ txHash });
-    completeJob(job);
-    return c.json({ success: true, txHash, jobId: job.id, balance: acct.balance });
-  } catch (e) {
-    step.fail(String(e).slice(0, 300));
-    failJob(job, String(e).slice(0, 300));
-    return bad(c, `withdraw failed: ${String(e).slice(0, 300)}`, 500);
-  }
-});
+/**
+ * Withdrawal is non-custodial by construction: DorrVault only ever pays FXRP
+ * out to the depositor who calls `withdraw()` themselves. The operator has no
+ * authority to move a trader's collateral — that is the property the whole
+ * design rests on — so this endpoint deliberately refuses rather than offering
+ * an operator-routed path. The client withdraws straight from the wallet.
+ */
+app.post("/withdraw", (c) =>
+  c.json(
+    {
+      error: "dorr cannot withdraw on your behalf — the vault pays out only to the depositor.",
+      howTo: "Withdraw from the Collateral panel; your wallet signs DorrVault.withdraw(uint256) directly.",
+      vaultAddress: flareConfigured() ? env.flare.vault : undefined,
+    },
+    501,
+  ),
+);
 
 // ─── trading ─────────────────────────────────────────────────────────────────
 app.post("/orders/commit", async (c) => {
@@ -201,6 +232,9 @@ app.post("/orders/commit", async (c) => {
   };
   const authErr = checkAuth("commit", p, body, p.address);
   if (authErr) return bad(c, authErr, 401);
+  // Pick up collateral the trader deposited on-chain before judging free margin,
+  // so a fresh wallet with FXRP in the vault isn't told it has none.
+  await reconcileVault(p.address);
   try {
     const { order, jobId } = commitOrder(p);
     return c.json({
@@ -328,7 +362,7 @@ app.post("/orders/:id/anchor-commit", async (c) => {
     return c.json({
       success: true,
       txHash,
-      explorerUrl: `https://preprod.cardanoscan.io/transaction/${txHash}`,
+      explorerUrl: explorerTx(txHash),
       order,
     });
   } catch (e) {
@@ -361,23 +395,26 @@ app.get("/feed", (c) => {
 // ─── config (addresses + explorer + markets for the UI evidence panel) ───────
 app.get("/config", async (c) => {
   const cfg: Record<string, unknown> = {
-    network: "preprod",
-    explorerBase: "https://preprod.cardanoscan.io/transaction/",
+    network: env.flare.chainId === 114 ? "flare-coston2" : `flare-${env.flare.chainId}`,
+    chainId: env.flare.chainId,
+    explorerBase: `${env.flare.explorer}/tx/`,
     markets: MARKETS.map((m) => ({ id: m.id, symbol: m.symbol, base: m.base, maxLeverage: m.maxLeverage })),
-    midnight: { network: "local", proofServer: "http://127.0.0.1:6301" },
   };
+  if (!flareConfigured()) {
+    cfg.flare = null;
+    return c.json(cfg);
+  }
   try {
-    const ctx = await initCardano();
-    cfg.cardano = {
-      operatorAddress: ctx.operatorAddress,
-      dusdPolicyId: ctx.dusdPolicyId,
-      dusdUnit: ctx.dusdUnit,
-      vaultAddress: ctx.vaultAddress,
-      ownerVaultAddress: ctx.ownerVaultAddress,
-      anchorAddress: ctx.anchorAddress,
+    const [fx, sol] = await Promise.all([fxrpInfo(), vaultSolvency()]);
+    cfg.flare = {
+      vaultAddress: sol.vaultAddress,
+      settlementAddress: env.flare.settlement,
+      collateral: { symbol: fx.symbol, address: fx.address, decimals: fx.decimals },
+      ftso: await resolveFtsoAddress().catch(() => null),
+      faucetUrl: "https://faucet.flare.network/coston2",
     };
   } catch {
-    cfg.cardano = null;
+    cfg.flare = null;
   }
   return c.json(cfg);
 });
@@ -518,6 +555,7 @@ app.post("/orders/seal", async (c) => {
   };
   const authErr = checkAuth("seal", { commitment: p.commitment, targetRound: p.targetRound }, body, p.address);
   if (authErr) return bad(c, authErr, 401);
+  await reconcileVault(p.address);
   try {
     const so = addSealedOrder(p);
     return c.json({ success: true, id: so.id, epochId: so.epochId, targetRound: so.targetRound, commitment: so.commitment });
@@ -660,7 +698,7 @@ app.post("/disclose/verify", async (c) => {
 app.get("/anchors", (c) => {
   const anchors = getState().anchors.map((a) => ({
     ...a,
-    explorerUrl: `https://preprod.cardanoscan.io/transaction/${a.txHash}`,
+    explorerUrl: explorerTx(a.txHash),
   }));
   return c.json({ anchors });
 });
@@ -711,10 +749,17 @@ app.get("/stats", (c) => {
 
 // ─── ops/diagnostics ─────────────────────────────────────────────────────────
 app.get("/ops/balances", async (c) => {
+  if (!flareConfigured()) return bad(c, "flare not configured", 503);
   try {
-    return c.json(await operatorBalances());
+    const [relayer, fx, sol] = await Promise.all([relayerBalance(), fxrpInfo(), vaultSolvency()]);
+    return c.json({
+      chain: "flare-coston2",
+      relayer: { address: relayer.address, c2flr: relayer.c2flr },
+      vault: { address: sol.vaultAddress, fxrp: sol.reservesFxrp },
+      collateral: { symbol: fx.symbol, address: fx.address, decimals: fx.decimals },
+    });
   } catch (e) {
-    return bad(c, String(e).slice(0, 300), 500);
+    return bad(c, `balances unavailable: ${String(e).slice(0, 160)}`, 503);
   }
 });
 
@@ -757,30 +802,13 @@ app.get("/ops/solvency", async (c) => {
     }
   }
 
-  try {
-    const ctx = await initCardano();
-    const reserves = await vaultReserves();
-    const reservesUsd = reserves.dusd;
-    const solvent = reservesUsd + 1e-6 >= liabilitiesUsd;
-    const ratio = liabilitiesUsd > 0 ? reservesUsd / liabilitiesUsd : Infinity;
-    const at = new Date().toISOString();
-    const attestation = createHash("sha256")
-      .update(`dorr-solvency:${ctx.vaultAddress}:${reservesUsd.toFixed(6)}:${liabilitiesUsd.toFixed(6)}:${at}`)
-      .digest("hex");
-    return c.json({
-      solvent,
-      reservesUsd,
+  // No vault configured — report that plainly rather than inventing reserves.
+  return c.json(
+    {
+      error: "solvency unavailable — the Flare vault is not configured",
       liabilitiesUsd,
-      surplusUsd: reservesUsd - liabilitiesUsd,
-      collateralizationRatio: ratio === Infinity ? null : ratio,
-      vaultAddress: ctx.vaultAddress,
-      dusdUnit: ctx.dusdUnit,
-      vaultUtxos: reserves.utxos,
-      attestation,
-      at,
-      note: "reserves are the live on-chain FXRP at vaultAddress — recompute and verify independently",
-    });
-  } catch (e) {
-    return bad(c, `solvency check failed: ${String(e).slice(0, 200)}`, 500);
-  }
+      note: "set the DorrVault address so reserves can be read on-chain",
+    },
+    503,
+  );
 });

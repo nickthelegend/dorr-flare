@@ -378,7 +378,7 @@ export default function TradingChart() {
 
           <div className="ml-auto flex items-center gap-1.5 text-[10px] text-muted-foreground font-mono">
             <Bullet variant="success" size="sm" className="rounded-full animate-pulse" />
-            <span className="hidden md:inline">{tfLabel} · vAMM mark vs pyth index</span>
+            <span className="hidden md:inline">{tfLabel} · vAMM mark vs FTSO index</span>
           </div>
         </div>
         <CardContent className="flex-1 p-0 relative min-h-0">

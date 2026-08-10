@@ -270,7 +270,7 @@ export interface DorrEvent {
   marketId?: string;
   detail: string;
   txHash?: string;
-  chain?: "cardano" | "midnight";
+  chain?: "flare-coston2";
 }
 
 /** The private order fields opened by a selective disclosure. */

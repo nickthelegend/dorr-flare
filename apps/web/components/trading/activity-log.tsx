@@ -88,7 +88,7 @@ function EventRow({ event }: { event: DorrEvent }) {
   const meta = EVENT_META[event.type] ?? { icon: Activity, tone: "neutral" as Tone };
   const Icon = meta.icon;
   const base = event.marketId?.split("-")[0];
-  const cardanoTx = event.txHash && event.chain === "cardano" ? event.txHash : undefined;
+  const flareTx = event.txHash && event.chain === "flare-coston2" ? event.txHash : undefined;
 
   return (
     <motion.div
@@ -124,14 +124,14 @@ function EventRow({ event }: { event: DorrEvent }) {
           </span>
         </div>
         <p className="text-[11px] leading-snug text-foreground/90 break-words">{event.detail}</p>
-        {cardanoTx && (
+        {flareTx && (
           <a
-            href={explorerTx(cardanoTx)}
+            href={explorerTx(flareTx)}
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center gap-1 text-[10px] font-mono text-primary underline"
           >
-            {truncateHash(cardanoTx)} <ExternalLink className="size-2.5" />
+            {truncateHash(flareTx)} <ExternalLink className="size-2.5" />
           </a>
         )}
       </div>
@@ -143,7 +143,7 @@ function EventRow({ event }: { event: DorrEvent }) {
  * The trader's activity timeline — a premium scrollable log of every action
  * (commit / execute / close / SL-TP / anchor / deposit / withdraw / disclose).
  * Polls the connected wallet's address (falls back to recent global events when
- * no wallet is connected). Cardano tx hashes link to preprod cardanoscan.
+ * no wallet is connected). Flare tx hashes link to the Coston2 explorer.
  * Fails soft: operator down → empty state, never crashes.
  */
 export default function ActivityLog() {

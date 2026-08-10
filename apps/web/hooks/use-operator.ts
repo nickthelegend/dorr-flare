@@ -5,11 +5,17 @@ import { operator, type Job, type Market } from "@/lib/operator";
 
 /** Everything fails soft: components render loading/empty states on error. */
 
+/**
+ * The venue's heartbeat. It has to keep beating while the tab is in the
+ * background, otherwise the status chip can latch on a failure from a blip and
+ * still read "offline" long after the operator is back.
+ */
 export function useHealth() {
   return useQuery({
     queryKey: ["operator", "health"],
     queryFn: operator.health,
     refetchInterval: 10_000,
+    refetchIntervalInBackground: true,
     retry: false,
   });
 }

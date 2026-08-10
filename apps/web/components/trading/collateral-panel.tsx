@@ -78,7 +78,7 @@ export default function CollateralPanel() {
       })) as bigint;
       if (balance < amount) {
         throw new Error(
-          `wallet holds ${formatUnits(balance, FXRP_DECIMALS)} FXRP — use the faucet first`,
+          `wallet holds ${formatUnits(balance, FXRP_DECIMALS)} FXRP — claim more from the Flare faucet first`,
         );
       }
 

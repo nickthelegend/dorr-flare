@@ -12,11 +12,17 @@ export type PrivacyMode = "private" | "public";
 
 export interface Account {
   address: string;
-  /** dUSD credited from on-chain vault deposits (free + locked). */
+  /** FXRP margin credited from on-chain vault deposits, ± realized PnL (free + locked). */
   balance: number;
   locked: number;
   /** vault deposit txs already credited (idempotency). */
   creditedUtxos: string[];
+  /**
+   * Last on-chain DorrVault balance observed for this address. Deposits and
+   * withdrawals are credited as the *delta* against this watermark, so the
+   * trader's accumulated off-chain PnL is preserved across reconciliations.
+   */
+  onChainSeen?: number;
 }
 
 export interface DorrOrder {
@@ -77,8 +83,11 @@ export interface DorrPosition {
   closeReason?: "close" | "liquidated" | "stop-loss" | "take-profit";
   settlement?: {
     settlementId?: string;
-    midnightSettlementTx?: string;
-    cardanoAnchorTx?: string;
+    /** SHA-256(orderCommitment ‖ closeRecord) — proves what settled without revealing it. */
+    settlementDigest?: string;
+    /** Set when the position settled as part of an on-chain sealed batch. */
+    batchEpochId?: string;
+    batchTx?: string;
   };
 }
 
@@ -145,7 +154,7 @@ export interface DorrEvent {
   detail: string;
   txHash?: string;
   /** which chain the tx is on (for explorer links). */
-  chain?: "cardano" | "midnight";
+  chain?: "flare-coston2";
 }
 
 export interface StateFile {
@@ -162,7 +171,18 @@ export interface StateFile {
 }
 
 const DATA_DIR = resolve(DORR_ROOT, "services/operator/data");
-const STATE_PATH = resolve(DATA_DIR, "state.json");
+
+/**
+ * Where the ledger lives.
+ *
+ * The test suite drives the real routes in-process — including `/demo/reset`,
+ * which wipes accounts, positions and anchors. Pointed at the default file that
+ * would destroy a running operator's state, so tests get their own file. Set
+ * DORR_STATE_PATH to override explicitly.
+ */
+const STATE_PATH = process.env.DORR_STATE_PATH
+  ? resolve(process.env.DORR_STATE_PATH)
+  : resolve(DATA_DIR, process.env.NODE_ENV === "test" ? "state.test.json" : "state.json");
 
 const empty = (): StateFile => ({
   accounts: {},

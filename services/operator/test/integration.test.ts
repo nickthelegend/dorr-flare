@@ -70,10 +70,11 @@ test("private trade lifecycle: commit → execute → close, fully wired", async
   expect(entry.commitmentHash).toBe(commit.commitmentHash);
   expect(Object.keys(entry).sort()).toEqual(["at", "commitmentHash", "marketId", "privacyMode"]);
 
-  // commit ZK job completes
+  // commit job completes: the commitment is sealed, nothing else leaks
   const cj = await pollJob(commit.jobId);
   expect(cj.status).toBe("complete");
-  expect(cj.steps[0].txHash).toMatch(/^[0-9a-f]{64}$/);
+  expect(cj.steps[0].label).toContain("commitment");
+  expect(cj.steps[0].detail).toContain(commit.commitmentHash.slice(0, 16));
 
   // EXECUTE
   const exe = await j(await post(`/orders/${commit.orderId}/execute`));
@@ -94,18 +95,13 @@ test("private trade lifecycle: commit → execute → close, fully wired", async
   expect(typeof close.position.realizedPnl).toBe("number");
   const clj = await pollJob(close.jobId);
   expect(clj.status).toBe("complete");
-  // settlement proof + L1 anchor + bind all recorded
-  const labels = clj.steps.map((s: any) => s.label).join("|");
-  expect(labels).toContain("proveSettlementTransition");
-  expect(labels).toContain("anchor settlement digest");
+  // the close records a settlement digest binding commitment → close record
+  expect(clj.steps.map((s: any) => s.label).join("|")).toContain("settlement digest");
+  expect(close.position.settlement.settlementDigest).toMatch(/^[0-9a-f]{64}$/);
 
-  // margin released; anchor recorded on-chain (audit trail)
+  // margin released back to the trader
   const acct2 = await j(await get(`/account/${USER}`));
   expect(acct2.locked).toBe(0);
-  const anchors = await j(await get("/anchors"));
-  expect(anchors.anchors.length).toBe(1);
-  expect(anchors.anchors[0].txHash).toMatch(/^[0-9a-f]{64}$/);
-  expect(anchors.anchors[0].explorerUrl).toContain("cardanoscan");
 });
 
 test("public order leaks (the A/B foil), proving the toggle matters", async () => {

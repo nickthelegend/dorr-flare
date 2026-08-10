@@ -64,12 +64,39 @@ export interface DisclosureVerdict {
 }
 
 /** Anyone handed a disclosure can verify it against the committed hash. */
+/** Fields a disclosure must open for the commitment to be recomputable. */
+const REVEALED_FIELDS = ["pairId", "side", "price", "size", "leverage", "margin", "nonce"] as const;
+
 export function verifyDisclosure(d: Disclosure): DisclosureVerdict {
+  // Validate the shape first so a caller gets a sentence they can act on rather
+  // than a JS TypeError leaked out of the hashing code.
+  const reject = (reason: string): DisclosureVerdict => ({
+    valid: false,
+    recomputed: "",
+    commitment: typeof d?.commitment === "string" ? d.commitment : "",
+    matches: false,
+    reason,
+  });
+
+  if (!d || typeof d !== "object") return reject("no disclosure supplied — send the object returned by /disclose");
+  if (typeof d.commitment !== "string" || !/^[0-9a-f]{64}$/i.test(d.commitment.replace(/^0x/, ""))) {
+    return reject("missing or malformed 'commitment' — expected a 32-byte hex hash");
+  }
+  if (!d.revealed || typeof d.revealed !== "object") {
+    return reject("missing 'revealed' — the opened order fields are required to verify a disclosure");
+  }
+  const missing = REVEALED_FIELDS.filter(
+    (k) => (d.revealed as Record<string, unknown>)[k] === undefined || (d.revealed as Record<string, unknown>)[k] === null,
+  );
+  if (missing.length) {
+    return reject(`disclosure is incomplete — missing ${missing.join(", ")}`);
+  }
+
   let recomputed = "";
   try {
     recomputed = orderCommitmentHex(d.revealed);
-  } catch (e) {
-    return { valid: false, recomputed: "", commitment: d?.commitment ?? "", matches: false, reason: `malformed disclosure: ${String(e).slice(0, 120)}` };
+  } catch {
+    return reject("could not recompute the commitment from the revealed fields — they are not in the expected format");
   }
   const matches = recomputed === d.commitment;
   return {

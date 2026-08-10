@@ -176,7 +176,9 @@ export default function TradingPanel() {
       return;
     }
     if (account && marginNum > account.free) {
-      toast.error(`Insufficient free balance (${formatUsd(account.free)} FXRP). Deposit or faucet first.`);
+      toast.error(`Insufficient free balance (${formatUsd(account.free)} FXRP).`, {
+        description: "Deposit FXRP into the vault from the Collateral panel.",
+      });
       return;
     }
     if (isLimit && !(limitNum > 0)) {
@@ -433,7 +435,13 @@ export default function TradingPanel() {
               className="pr-14 font-mono"
               disabled={!connected || busy}
               value={margin}
-              onChange={(e) => setMargin(e.target.value)}
+              // Margin is a positive decimal amount: keep letters, signs and stray
+              // separators out of the field rather than letting them fall through to
+              // a NaN that silently disables the button with no explanation.
+              onChange={(e) => {
+                const next = e.target.value;
+                if (next === "" || /^\d*\.?\d*$/.test(next)) setMargin(next);
+              }}
             />
             <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
               FXRP
@@ -740,7 +748,7 @@ export default function TradingPanel() {
           phase === "done" ||
           (phase === "error" && (commitJob.data || execJob.data))) && (
           <div className="rounded-lg border border-border/60 bg-muted/20 p-3 space-y-3">
-            {commitJob.data && <JobProgress job={commitJob.data} title="commit · midnight zk pipeline" />}
+            {commitJob.data && <JobProgress job={commitJob.data} title="commit · sealed-order pipeline" />}
             {phase === "executing" && !execJob.data && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Loader2 className="w-3.5 h-3.5 animate-spin" /> submitting execution…
