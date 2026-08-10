@@ -1,112 +1,127 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
-import { motion } from "framer-motion";
-import { ChevronRight, Menu, Search } from "lucide-react";
+import { motion, useReducedMotion } from "framer-motion";
+import { ChevronRight, Menu, X } from "lucide-react";
 import { DorrMark } from "@/components/icons/dorr-mark";
-import { TerminalMockup } from "./terminal-mockup";
-import { LaunchButton, SectionEyebrow, gradientStyle } from "./primitives";
+import { LaunchButton, gradientStyle } from "./primitives";
 
-const NAV = ["Product", "How it works", "Attack Lab", "Docs", "GitHub"];
+/**
+ * The dorr landing page.
+ *
+ * One header, six anchored sections, and a single authored motion moment (the
+ * hero). Below the fold sections reveal on their own terms rather than repeating
+ * one entrance animation six times.
+ *
+ * Everything here is marketing surface — it renders with no operator running and
+ * cannot touch `components/trading/*`.
+ */
 
-const TRIAGE = [
-  { label: "Sealed", count: 4, dot: "#ffffff", items: ["Order encrypted to drand round", "Operator holds ciphertext only"] },
-  { label: "Cleared", count: 7, dot: "#e5e5e5", items: ["Epoch cleared at one price", "Sandwich profit $0.00"] },
-  { label: "Settled", count: 18, dot: "#a3a3a3", items: ["FTSO re-read on-chain", "Enclave quote verified"] },
-  { label: "Rejected", count: 13, dot: "#525252", items: ["PriceOutOfBand · forged quote"] },
+const SECTIONS = [
+  { id: "terminal", label: "Terminal" },
+  { id: "sealed", label: "How it works" },
+  { id: "attack", label: "Attack Lab" },
+  { id: "proof", label: "Proof" },
+  { id: "access", label: "Access" },
+] as const;
+
+const STEPS = [
+  {
+    n: "01",
+    title: "You seal it in the browser",
+    body: "Your order is timelock-encrypted to a drand round that has not been published yet. What leaves your machine is ciphertext plus a 32-byte commitment.",
+    stat: "AES-GCM · BLS12-381",
+  },
+  {
+    n: "02",
+    title: "The operator holds bytes it cannot open",
+    body: "Not a policy — the League of Entropy is a live 12-of-22 threshold network, and the beacon for that round does not exist yet. We have the ciphertext and no way in.",
+    stat: "decrypt → REFUSED",
+  },
+  {
+    n: "03",
+    title: "The epoch clears at one price",
+    body: "When the round lands, every order in the batch settles at a single uniform price. A bot that front-runs and back-runs buys and sells at the same number.",
+    stat: "sandwich → $0.00",
+  },
+  {
+    n: "04",
+    title: "The chain checks our arithmetic",
+    body: "DorrBatchSettlement re-reads FTSO v2 itself and reverts PriceOutOfBand if our clearing price is off-market. The referee is Flare, not us.",
+    stat: "reverts on drift > 200 bps",
+  },
 ];
 
-const LOGOS = ["Flare", "FTSO v2", "FAssets", "FXRP", "drand", "Coston2", "Foundry", "viem"];
-
-const QUOTES = [
-  {
-    quote:
-      "The order is a hash to everyone, including the venue matching it. That is a different claim from every other private DEX I have reviewed.",
-    name: "Parker Wilf",
-    role: "Group Product Manager",
-    company: "MERCURY",
-  },
-  {
-    quote:
-      "Uniform-price clearing means the bot buys and sells at the same number. Front-running is not hidden here — it is unprofitable by construction.",
-    name: "Andrew von Rosenbach",
-    role: "Senior Engineering Program Manager",
-    company: "COHERE",
-  },
-  {
-    quote:
-      "The settlement contract re-reads FTSO itself and reverts if you lie about the price. The chain is the referee, not the operator.",
-    name: "Mathies Christensen",
-    role: "Engineering Manager",
-    company: "LUNAR",
-  },
+const PROOF = [
+  { k: "DorrVault", v: "0x65b705A4…", note: "FXRP margin, depositor-only withdrawal" },
+  { k: "DorrBatchSettlement", v: "0x047478DE…", note: "FTSO re-read + enclave quote" },
+  { k: "TEEAttestationVerifier", v: "0x578D75dD…", note: "quote bound to one batch" },
 ];
 
-const PLANS = [
-  {
-    tier: "Trader",
-    price: { m: "0 bps maker", y: "0 bps maker" },
-    desc: "For anyone who wants their order flow to stop leaking.",
-    features: [
-      "Sealed orders via drand timelock",
-      "Uniform-price batch clearing",
-      "Hidden stop-loss / take-profit",
-      "Non-custodial FXRP vault",
-      "Selective disclosure to an auditor",
-    ],
-  },
-  {
-    tier: "Desk",
-    price: { m: "2 bps taker", y: "1.5 bps taker" },
-    desc: "For desks running size that is worth front-running.",
-    features: [
-      "Everything in Trader",
-      "Private resting limit orders",
-      "Per-market open-interest caps",
-      "Slippage + oracle-divergence guards",
-      "Live proof-of-solvency endpoint",
-    ],
-    pro: true,
-  },
-  {
-    tier: "Venue",
-    price: { m: "Talk to us", y: "Talk to us" },
-    desc: "For teams who want the sealed-batch engine under their own book.",
-    features: [
-      "Everything in Desk",
-      "Confidential matching enclave",
-      "TEE attestation bound per batch",
-      "On-chain FTSO price-band enforcement",
-      "Self-hosted operator + relayer",
-    ],
-  },
+const NUMBERS = [
+  { v: "6", l: "markets on FTSO v2" },
+  { v: "20×", l: "max leverage" },
+  { v: "125", l: "tests, all green" },
+  { v: "0", l: "orders the operator can read" },
 ];
 
 export function Landing() {
-  const [yearly, setYearly] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [active, setActive] = useState<string>("terminal");
+  const reduce = useReducedMotion();
+
+  // Light-up the nav item for whichever section owns the viewport.
+  useEffect(() => {
+    const obs = new IntersectionObserver(
+      (entries) => {
+        const hit = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        if (hit) setActive(hit.target.id);
+      },
+      { rootMargin: "-45% 0px -45% 0px", threshold: [0.01, 0.25, 0.5] },
+    );
+    for (const s of SECTIONS) {
+      const el = document.getElementById(s.id);
+      if (el) obs.observe(el);
+    }
+    return () => obs.disconnect();
+  }, []);
+
+  // Transform-only, never opacity: if IntersectionObserver never fires — a
+  // crawler, a screenshot, a browser with motion disabled — the copy is still
+  // on the page. Motion is the enhancement, not the gate.
+  const rise = reduce
+    ? {}
+    : {
+        initial: { y: 22 },
+        whileInView: { y: 0 },
+        viewport: { once: true, margin: "-80px" },
+        transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] as const },
+      };
 
   return (
     <div className="landing-root relative min-h-screen overflow-x-hidden bg-[#0c0c0c] text-white">
-      {/* fixed background video */}
+      {/* ── ambient backdrop ── */}
       <div className="fixed inset-0 z-0 pointer-events-none">
         <video
           autoPlay
           loop
           muted
           playsInline
-          className="w-full h-full object-cover pointer-events-none opacity-60"
+          aria-hidden
+          className="w-full h-full object-cover pointer-events-none opacity-50"
           src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260508_064122_c4750c0e-7476-4b44-94a2-a85a65c63bf2.mp4"
         />
-        <div className="absolute inset-0 bg-[#0c0c0c]/55" />
+        <div className="absolute inset-0 bg-gradient-to-b from-[#0c0c0c]/70 via-[#0c0c0c]/85 to-[#0c0c0c]" />
       </div>
 
-      {/* container guide lines */}
-      <div className="hidden md:block pointer-events-none fixed inset-y-0 left-1/2 -translate-x-[calc(50%+36rem)] w-px bg-white/10 z-[5]" />
-      <div className="hidden md:block pointer-events-none fixed inset-y-0 left-1/2 translate-x-[calc(-50%+36rem)] w-px bg-white/10 z-[5]" />
+      <div className="hidden lg:block pointer-events-none fixed inset-y-0 left-1/2 -translate-x-[calc(50%+36rem)] w-px bg-white/[0.07] z-[5]" />
+      <div className="hidden lg:block pointer-events-none fixed inset-y-0 left-1/2 translate-x-[calc(-50%+36rem)] w-px bg-white/[0.07] z-[5]" />
 
-      {/* grain filter for the shiny headline */}
-      <svg className="absolute w-0 h-0">
+      <svg className="absolute w-0 h-0" aria-hidden>
         <filter id="c3-noise">
           <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch" />
           <feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.35 0" />
@@ -115,337 +130,345 @@ export function Landing() {
         </filter>
       </svg>
 
-      <div className="relative z-10">
-        {/* ── navbar ── */}
-        <div className="max-w-6xl mx-auto px-6">
-          <motion.nav
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, ease: "easeOut" }}
-            className="flex items-center justify-between py-5"
+      {/* ── the one header ── */}
+      <header className="sticky top-0 z-50 border-b border-white/[0.07] bg-[#0c0c0c]/70 backdrop-blur-xl">
+        <div className="max-w-6xl mx-auto px-6 flex items-center justify-between h-16">
+          <a href="#top" className="flex items-center gap-2.5" aria-label="dorr, back to top">
+            <DorrMark className="w-7 h-7" title="dorr" />
+            <span className="text-[15px] font-semibold lowercase tracking-tight">dorr</span>
+          </a>
+
+          <nav className="hidden md:flex items-center gap-1" aria-label="Sections">
+            {SECTIONS.map((s) => (
+              <a
+                key={s.id}
+                href={`#${s.id}`}
+                aria-current={active === s.id ? "true" : undefined}
+                className={`relative px-3 py-2 text-sm font-medium rounded-full transition-colors ${
+                  active === s.id ? "text-white" : "text-white/55 hover:text-white/90"
+                }`}
+              >
+                {s.label}
+                {active === s.id ? (
+                  <motion.span
+                    layoutId="nav-active"
+                    className="absolute inset-0 -z-10 rounded-full bg-white/[0.08]"
+                    transition={{ type: "spring", stiffness: 380, damping: 32 }}
+                  />
+                ) : null}
+              </a>
+            ))}
+          </nav>
+
+          <div className="hidden md:block">
+            <LaunchButton label="Open terminal" />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setMenuOpen((v) => !v)}
+            aria-expanded={menuOpen}
+            aria-label={menuOpen ? "Close menu" : "Open menu"}
+            className="md:hidden w-10 h-10 rounded-full border border-white/10 bg-white/5 flex items-center justify-center active:scale-95 transition-transform"
           >
-            <Link href="/" aria-label="dorr home">
-              <DorrMark className="w-8 h-8" title="dorr" />
-            </Link>
-
-            <div className="hidden md:flex gap-8">
-              {NAV.map((item, i) => (
-                <motion.a
-                  key={item}
-                  href="#"
-                  initial={{ opacity: 0, y: -6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.1 + i * 0.05, duration: 0.5 }}
-                  className="text-white/70 text-sm font-medium hover:text-white transition-colors"
-                >
-                  {item}
-                </motion.a>
-              ))}
-            </div>
-
-            <div className="hidden md:block">
-              <LaunchButton />
-            </div>
-            <button
-              type="button"
-              aria-label="Open menu"
-              className="md:hidden w-10 h-10 rounded-full border border-white/10 bg-white/5 flex items-center justify-center"
-            >
-              <Menu className="w-4 h-4" />
-            </button>
-          </motion.nav>
+            {menuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+          </button>
         </div>
 
-        {/* ── hero ── */}
-        <section className="pt-16 md:pt-28 pb-20 text-center flex flex-col items-center px-6">
-          <motion.h1
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3, duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-            className="text-4xl md:text-7xl font-semibold tracking-tight leading-[0.9]"
+        {menuOpen ? (
+          <div className="md:hidden border-t border-white/[0.07] bg-[#0c0c0c]/95 px-6 py-4">
+            <div className="flex flex-col">
+              {SECTIONS.map((s) => (
+                <a
+                  key={s.id}
+                  href={`#${s.id}`}
+                  onClick={() => setMenuOpen(false)}
+                  className="py-3 text-sm text-white/70 hover:text-white border-b border-white/5 last:border-0"
+                >
+                  {s.label}
+                </a>
+              ))}
+              <div className="pt-4">
+                <LaunchButton label="Open terminal" full />
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </header>
+
+      <main id="top" className="relative z-10">
+        {/* ── 1 · hero ── */}
+        <section className="px-6 pt-20 md:pt-32 pb-16 text-center flex flex-col items-center">
+          <a
+            href="#attack"
+            style={{ "--reveal-delay": "0.05s" } as React.CSSProperties}
+            className="reveal group inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] pl-1.5 pr-3 py-1.5 text-xs text-white/70 hover:text-white hover:border-white/20 transition-colors"
+          >
+            <span className="rounded-full bg-[#2C6BFF] text-white px-2 py-0.5 text-[10px] font-semibold">
+              LIVE
+            </span>
+            A bot tried to sandwich this. It got $0.00.
+            <ChevronRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
+          </a>
+
+          <h1
+            style={{ "--reveal-delay": "0.14s" } as React.CSSProperties}
+            className="reveal mt-8 text-[2.75rem] leading-[0.92] md:text-7xl md:leading-[0.9] font-semibold tracking-[-0.03em] max-w-4xl text-balance"
           >
             <span className="block text-white">Your order.</span>
             <span className="block animate-shiny" style={gradientStyle}>
               Unfront-runnable
             </span>
-          </motion.h1>
+          </h1>
 
-          <motion.p
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5, duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-            className="mt-8 text-white/60 max-w-md text-base leading-[1.5]"
+          <p
+            style={{ "--reveal-delay": "0.24s" } as React.CSSProperties}
+            className="reveal mt-7 text-white/55 max-w-xl text-[15px] md:text-base leading-relaxed text-pretty"
           >
-            dorr is a perpetual futures venue on Flare. Your browser timelock-encrypts the order, so
-            the operator holds ciphertext it cannot open — and the batch settles at one uniform price,
-            checked against FTSO on-chain before the chain will accept it.
-          </motion.p>
-
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.7, duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-            className="mt-8 flex flex-col items-center gap-3"
-          >
-            <LaunchButton />
-            <span className="text-xs text-white/40">Live on Flare Coston2 · FXRP-margined · up to 20×</span>
-          </motion.div>
-        </section>
-
-        {/* ── status strip ── */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.9, duration: 0.6 }}
-          className="h-10 bg-black/40 backdrop-blur-md border-t border-b border-white/10"
-        >
-          <div className="max-w-6xl mx-auto px-6 h-full flex items-center justify-between text-xs">
-            <div className="flex items-center gap-4">
-              <DorrMark className="w-3.5 h-3.5" />
-              <span className="font-bold text-white">dorr</span>
-              {["FLR", "XRP", "BTC", "ETH", "SOL", "DOGE"].map((m, i) => (
-                <span
-                  key={m}
-                  className={`text-white/50 ${i > 2 ? "hidden sm:inline" : ""} ${i > 3 ? "hidden md:inline" : ""}`}
-                >
-                  {m}
-                </span>
-              ))}
-            </div>
-            <div className="flex items-center gap-2 text-white/50">
-              <Search className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">FTSO v2 · drand quicknet · Coston2</span>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* ── the product ── */}
-        <section className="max-w-6xl mx-auto px-6 py-16 md:py-24">
-          <motion.div
-            initial={{ opacity: 0, y: 40 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-100px" }}
-            transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-          >
-            <TerminalMockup />
-          </motion.div>
-        </section>
-
-        {/* ── triage / how it works ── */}
-        <section className="max-w-6xl mx-auto px-6 py-20 md:py-28">
-          <div className="grid md:grid-cols-2 gap-10 md:gap-16 items-start">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.7 }}
-            >
-              <SectionEyebrow label="Sealed execution" tag="operator-blind" />
-              <h2 className="mt-5 text-3xl md:text-5xl font-semibold tracking-tight leading-[1.02]">
-                Nobody sees it.
-                <br />
-                Not even us.
-              </h2>
-              <p className="mt-6 text-white/60 text-base leading-[1.6] max-w-md">
-                Hiding an order from the public is not enough — the venue matching it can still read
-                it. dorr seals in your browser to a future drand round, so the operator provably
-                cannot open it until the batch is already frozen.
-              </p>
-              <div className="mt-8 flex flex-wrap gap-2">
-                {["drand timelock", "Uniform clearing", "FTSO price band", "TEE attestation"].map((c) => (
-                  <span
-                    key={c}
-                    className="text-xs text-white/70 px-3 py-1.5 rounded-full border border-white/10 bg-white/[0.03]"
-                  >
-                    {c}
-                  </span>
-                ))}
-              </div>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.7, delay: 0.1 }}
-              className="liquid-glass rounded-2xl p-5"
-            >
-              <div className="text-xs text-white/50">Today · 42 orders through the sealed path</div>
-              <div className="mt-4 space-y-3">
-                {TRIAGE.map((g) => (
-                  <div key={g.label} className="liquid-glass rounded-lg p-3">
-                    <div className="flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full" style={{ background: g.dot }} />
-                      <span className="text-sm font-medium">{g.label}</span>
-                      <span className="ml-auto text-xs text-white/40">{g.count}</span>
-                    </div>
-                    <div className="mt-2 space-y-1">
-                      {g.items.map((it) => (
-                        <div key={it} className="text-[11px] text-white/45 leading-snug">
-                          {it}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </motion.div>
-          </div>
-        </section>
-
-        {/* ── built on ── */}
-        <section className="max-w-6xl mx-auto px-6 py-16 md:py-20">
-          <p className="text-center text-xs uppercase tracking-widest text-white/40">
-            Built on Flare's own infrastructure
+            Perpetual futures on Flare, where the venue matching your order cannot read it —
+            and the chain, not the venue, decides whether the settlement price was honest.
           </p>
-          <div className="mt-10 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-6">
-            {LOGOS.map((name, i) => (
-              <motion.div
-                key={name}
-                initial={{ opacity: 0 }}
-                whileInView={{ opacity: 1 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.05, duration: 0.5 }}
-                className="text-sm font-semibold tracking-tight text-white/50 hover:text-white transition-colors text-center"
+
+          <div
+            style={{ "--reveal-delay": "0.34s" } as React.CSSProperties}
+            className="reveal mt-9 flex flex-col items-center gap-4"
+          >
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <LaunchButton label="Open the terminal" />
+              <a
+                href="#sealed"
+                className="group inline-flex items-center gap-2 rounded-full border border-white/15 text-white/90 text-sm font-medium px-5 py-3 hover:bg-white/5 hover:border-white/25 transition-colors"
               >
-                {name}
-              </motion.div>
-            ))}
-          </div>
-        </section>
-
-        {/* ── testimonials ── */}
-        <section className="max-w-6xl mx-auto px-6 py-20 md:py-28 border-t border-white/10">
-          <div className="grid md:grid-cols-3 gap-6">
-            {QUOTES.map((q, i) => (
-              <motion.figure
-                key={q.name}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.1, duration: 0.6 }}
-                className="liquid-glass rounded-2xl p-6"
-              >
-                <blockquote className="text-sm text-white/80 leading-[1.6]">“{q.quote}”</blockquote>
-                <figcaption className="mt-6 pt-5 border-t border-white/10">
-                  <div className="text-sm font-semibold">{q.name}</div>
-                  <div className="text-xs text-white/50">{q.role}</div>
-                  <div className="mt-1 text-xs text-white font-semibold tracking-wide">{q.company}</div>
-                </figcaption>
-              </motion.figure>
-            ))}
-          </div>
-        </section>
-
-        {/* ── pricing ── */}
-        <section className="c3-pricing-section">
-          <svg className="absolute w-0 h-0">
-            <filter id="c3-noise-pricing">
-              <feTurbulence type="fractalNoise" baseFrequency="0.5" numOctaves="2" stitchTiles="stitch" />
-              <feComponentTransfer>
-                <feFuncA type="linear" slope="0.075" />
-              </feComponentTransfer>
-              <feComposite in2="SourceGraphic" operator="in" result="noise" />
-              <feBlend in="SourceGraphic" in2="noise" mode="overlay" />
-            </filter>
-          </svg>
-
-          <div className="c3-watermark-container">
-            <div className="c3-watermark-main">
-              <span className="c3-watermark-line-1">Your order.</span>
-              <span className="c3-watermark-line-2">Unfront-runnable</span>
+                See how it works
+                <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+              </a>
             </div>
-          </div>
-
-          <div className="c3-grid">
-            {PLANS.map((p) => (
-              <div key={p.tier} className={`c3-card ${p.pro ? "c3-card-pro" : ""}`}>
-                <div className="c3-tier-small">{p.tier}</div>
-                <div className="c3-tier-large">{yearly ? p.price.y : p.price.m}</div>
-                <p className="c3-desc">{p.desc}</p>
-                <ul className="c3-list">
-                  {p.features.map((f) => (
-                    <li key={f}>
-                      <span className="c3-check">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="20 6 9 17 4 12" />
-                        </svg>
-                      </span>
-                      {f}
-                    </li>
-                  ))}
-                </ul>
-                <Link href="/trade" className="c3-btn">
-                  {p.tier === "Venue" ? "Talk to us" : "Start trading"}
-                </Link>
-              </div>
-            ))}
-          </div>
-
-          <div className="c3-toggle-wrap">
-            <span className="text-sm text-white/60">Annual</span>
-            <button
-              type="button"
-              aria-label="Toggle annual pricing"
-              aria-pressed={yearly}
-              onClick={() => setYearly((v) => !v)}
-              className={`c3-toggle ${yearly ? "active" : ""}`}
-            >
-              <span className="c3-toggle-knob" />
-            </button>
+            <p className="text-xs text-white/35">
+              Live on Flare Coston2 · FXRP-margined · up to 20×
+            </p>
           </div>
         </section>
 
-        {/* ── final CTA ── */}
-        <section className="max-w-6xl mx-auto px-6 py-20 md:py-32">
+        {/* ── 2 · the terminal, for real ── */}
+        <section id="terminal" className="scroll-mt-20 px-6 pb-24 md:pb-32">
+          <motion.figure
+            initial={reduce ? false : { y: 36, scale: 0.985 }}
+            whileInView={{ y: 0, scale: 1 }}
+            viewport={{ once: true, margin: "-60px" }}
+            transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
+            className="max-w-6xl mx-auto"
+          >
+            <div className="relative rounded-xl overflow-hidden border border-white/10 shadow-[0_50px_140px_-40px_rgba(3,68,220,0.5)]">
+              <Image
+                src="/assets/trade-terminal.png"
+                alt="The dorr terminal on Flare Coston2: a live FLR/USD candlestick chart priced from FTSO v2, the sealed order form with privacy mode on, the public feed showing only commitment hashes, and the activity log."
+                width={2880}
+                height={1800}
+                priority
+                className="w-full h-auto"
+              />
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#0c0c0c] to-transparent" />
+            </div>
+            <figcaption className="mt-5 text-center text-xs text-white/40">
+              The real terminal, not a render — every price on it came from FTSO v2 on Coston2.
+            </figcaption>
+          </motion.figure>
+        </section>
+
+        {/* ── 3 · how it works ── */}
+        <section id="sealed" className="scroll-mt-20 px-6 py-20 md:py-28 border-t border-white/[0.07]">
+          <div className="max-w-6xl mx-auto">
+            <motion.div {...rise} className="max-w-2xl">
+              <h2 className="text-3xl md:text-5xl font-semibold tracking-[-0.03em] leading-[1.04] text-balance">
+                Four steps. The third one
+                <br className="hidden sm:block" /> is the one nobody else does.
+              </h2>
+              <p className="mt-5 text-white/55 text-[15px] leading-relaxed max-w-lg text-pretty">
+                Hiding an order from the public is table stakes. Hiding it from the venue that
+                matches it is the hard part — and it only matters if the settlement price can
+                still be audited afterwards.
+              </p>
+            </motion.div>
+
+            <ol className="mt-14 grid gap-px bg-white/[0.07] md:grid-cols-2 rounded-xl overflow-hidden border border-white/[0.07]">
+              {STEPS.map((s, i) => (
+                <motion.li
+                  key={s.n}
+                  initial={reduce ? false : { y: 14 }}
+                  whileInView={{ y: 0 }}
+                  viewport={{ once: true, margin: "-40px" }}
+                  transition={{ duration: 0.6, delay: i * 0.08, ease: [0.22, 1, 0.36, 1] }}
+                  className="group relative bg-[#0c0c0c] p-7 md:p-9 transition-colors hover:bg-[#101319]"
+                >
+                  <div className="flex items-baseline gap-4">
+                    <span className="font-mono text-xs text-[#2C6BFF] tabular-nums">{s.n}</span>
+                    <h3 className="text-lg md:text-xl font-semibold tracking-tight">{s.title}</h3>
+                  </div>
+                  <p className="mt-3 ml-0 md:ml-10 text-sm text-white/55 leading-relaxed max-w-md text-pretty">
+                    {s.body}
+                  </p>
+                  <p className="mt-4 ml-0 md:ml-10 font-mono text-[11px] text-white/35">{s.stat}</p>
+                </motion.li>
+              ))}
+            </ol>
+          </div>
+        </section>
+
+        {/* ── 4 · attack lab ── */}
+        <section id="attack" className="scroll-mt-20 px-6 py-20 md:py-28 border-t border-white/[0.07]">
+          <div className="max-w-6xl mx-auto grid lg:grid-cols-[1fr_1.15fr] gap-12 lg:gap-16 items-center">
+            <motion.div {...rise}>
+              <h2 className="text-3xl md:text-5xl font-semibold tracking-[-0.03em] leading-[1.04] text-balance">
+                Run the attack yourself.
+              </h2>
+              <p className="mt-5 text-white/55 text-[15px] leading-relaxed max-w-md text-pretty">
+                The Attack Lab ships in the product. It runs a real sandwich against the live
+                vAMM — actual fills, actual price impact — then runs the identical attack against
+                a sealed order and shows you the bot failing.
+              </p>
+              <p className="mt-4 text-white/40 text-sm leading-relaxed max-w-md">
+                The brute-force is 25,000 real SHA-256 preimage guesses against the commitment. It
+                is timed on the server and reported with the rate it achieved.
+              </p>
+              <div className="mt-8">
+                <LaunchButton label="Open the Attack Lab" href="/trade" />
+              </div>
+            </motion.div>
+
+            <motion.div {...rise} className="grid sm:grid-cols-2 gap-4">
+              <div className="rounded-xl border border-rose-500/25 bg-rose-500/[0.05] p-6">
+                <p className="text-[11px] uppercase tracking-widest text-rose-300/80">
+                  Transparent DEX
+                </p>
+                <p className="mt-4 font-mono text-3xl font-semibold tabular-nums text-rose-400">
+                  −$152.90
+                </p>
+                <p className="mt-1 font-mono text-xs text-rose-300/60">152.1 bps stolen</p>
+                <p className="mt-5 text-sm text-white/50 leading-relaxed">
+                  The bot reads the order, buys ahead, and sells into the fill.
+                </p>
+              </div>
+              <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/[0.05] p-6">
+                <p className="text-[11px] uppercase tracking-widest text-emerald-300/80">
+                  dorr, sealed
+                </p>
+                <p className="mt-4 font-mono text-3xl font-semibold tabular-nums text-emerald-400">
+                  0 / 25,000
+                </p>
+                <p className="mt-1 font-mono text-xs text-emerald-300/60">commitment cracks</p>
+                <p className="mt-5 text-sm text-white/50 leading-relaxed">
+                  No side, no size, no price. The sandwich cannot even be constructed.
+                </p>
+              </div>
+            </motion.div>
+          </div>
+        </section>
+
+        {/* ── 5 · proof ── */}
+        <section id="proof" className="scroll-mt-20 px-6 py-20 md:py-28 border-t border-white/[0.07]">
+          <div className="max-w-6xl mx-auto">
+            <motion.div {...rise} className="max-w-2xl">
+              <h2 className="text-3xl md:text-5xl font-semibold tracking-[-0.03em] leading-[1.04] text-balance">
+                Every claim on this page
+                <br className="hidden sm:block" /> has an address.
+              </h2>
+              <p className="mt-5 text-white/55 text-[15px] leading-relaxed max-w-lg text-pretty">
+                Deployed and verifiable on Flare Coston2. The vault holds real FXRP that only its
+                depositor can withdraw — we hold no minting authority over it, which is exactly why
+                the solvency figure means something.
+              </p>
+            </motion.div>
+
+            <motion.dl {...rise} className="mt-12 divide-y divide-white/[0.07] border-y border-white/[0.07]">
+              {PROOF.map((p) => (
+                <div key={p.k} className="grid sm:grid-cols-[1fr_auto] gap-2 sm:gap-8 py-5 items-baseline">
+                  <div>
+                    <dt className="text-sm font-medium">{p.k}</dt>
+                    <dd className="mt-1 text-xs text-white/45">{p.note}</dd>
+                  </div>
+                  <dd className="font-mono text-xs text-[#7AA6FF]">{p.v}</dd>
+                </div>
+              ))}
+            </motion.dl>
+
+            <motion.div {...rise} className="mt-14 grid grid-cols-2 lg:grid-cols-4 gap-8">
+              {NUMBERS.map((n) => (
+                <div key={n.l}>
+                  <p className="font-mono text-4xl md:text-5xl font-semibold tabular-nums tracking-tight">
+                    {n.v}
+                  </p>
+                  <p className="mt-2 text-xs text-white/45 leading-snug">{n.l}</p>
+                </div>
+              ))}
+            </motion.div>
+
+            <motion.p {...rise} className="mt-14 max-w-2xl text-sm text-white/40 leading-relaxed">
+              <span className="text-white/70">Honest scope:</span> v1 runs a trusted operator for
+              matching and execution, like a sequencer. What is cryptographic today is that it
+              cannot see or front-run a sealed order, the epoch clears at one price, collateral is
+              self-custodied, and the settlement contract enforces the price band on-chain. The
+              clearing arithmetic is not yet ZK-proven.
+            </motion.p>
+          </div>
+        </section>
+
+        {/* ── 6 · access ── */}
+        <section id="access" className="scroll-mt-20 px-6 py-20 md:py-32 border-t border-white/[0.07]">
           <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-            className="liquid-glass relative overflow-hidden rounded-3xl px-8 py-16 md:py-24 text-center"
+            {...rise}
+            className="max-w-4xl mx-auto relative overflow-hidden rounded-2xl border border-white/10 px-8 py-16 md:py-24 text-center"
           >
             <div
               className="absolute inset-0 pointer-events-none"
               style={{
-                background: "radial-gradient(600px circle at 50% 0%, rgba(44,107,255,0.28), transparent 70%)",
-                opacity: 0.5,
+                background:
+                  "radial-gradient(700px circle at 50% -10%, rgba(44,107,255,0.22), transparent 65%)",
               }}
             />
             <div className="relative">
-              <h2 className="text-4xl md:text-6xl font-semibold tracking-tight leading-[1.02]">
-                Stop paying the
-                <br />
-                timing tax.
+              <h2 className="text-3xl md:text-6xl font-semibold tracking-[-0.03em] leading-[1.02] text-balance">
+                Stop paying
+                <br /> the timing tax.
               </h2>
-              <p className="mt-6 text-white/60 max-w-md mx-auto text-sm leading-[1.6]">
-                Every leg is real: deployed contracts on Coston2, FXRP collateral you custody
-                yourself, and a settlement contract that refuses an off-market price.
+              <p className="mt-6 text-white/55 max-w-md mx-auto text-[15px] leading-relaxed text-pretty">
+                No waitlist and no signup — connect a wallet on Coston2, claim test FXRP, and the
+                terminal is yours.
               </p>
-              <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-                <LaunchButton />
+              <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
+                <LaunchButton label="Open the terminal" />
                 <a
                   href="https://github.com/nickthelegend/dorr-flare"
                   target="_blank"
                   rel="noreferrer"
-                  className="group inline-flex items-center gap-2 rounded-full border border-white/15 text-white text-sm font-medium px-5 py-3 hover:bg-white/5 transition-colors"
+                  className="group inline-flex items-center gap-2 rounded-full border border-white/15 text-white text-sm font-medium px-5 py-3 hover:bg-white/5 hover:border-white/25 transition-colors"
                 >
                   Read the code
-                  <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-[1px]" />
+                  <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
                 </a>
               </div>
             </div>
           </motion.div>
         </section>
+      </main>
 
-        <footer className="max-w-6xl mx-auto px-6 pb-16 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-white/40">
-          <div className="flex items-center gap-2">
+      <footer className="relative z-10 border-t border-white/[0.07]">
+        <div className="max-w-6xl mx-auto px-6 py-10 flex flex-col sm:flex-row items-center justify-between gap-5 text-xs text-white/35">
+          <div className="flex items-center gap-2.5">
             <DorrMark className="w-4 h-4" />
-            <span>dorr — perpetual futures you can't front-run</span>
+            <span>dorr — perpetual futures you can&apos;t front-run</span>
           </div>
-          <span>v1 runs a trusted operator for matching. What's cryptographic is stated plainly in the docs.</span>
-        </footer>
-      </div>
+          <div className="flex items-center gap-5">
+            {SECTIONS.map((s) => (
+              <a key={s.id} href={`#${s.id}`} className="hover:text-white/70 transition-colors">
+                {s.label}
+              </a>
+            ))}
+            <Link href="/trade" className="hover:text-white/70 transition-colors">
+              Terminal
+            </Link>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

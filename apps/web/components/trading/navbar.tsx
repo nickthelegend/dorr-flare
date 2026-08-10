@@ -5,7 +5,7 @@ import { WalletConnectButton } from "./wallet-connect-button";
 import { DemoShowcase } from "./attack-lab";
 import { Bullet } from "@/components/ui/bullet";
 import { Badge } from "@/components/ui/badge";
-import LockIcon from "@/components/icons/lock";
+import { DorrMark } from "@/components/icons/dorr-mark";
 import { useHealth, useMarkets, useAnchors, useSolvency } from "@/hooks/use-operator";
 
 /** One premium status pill: bullet + label + optional value. */
@@ -86,9 +86,7 @@ export default function TradingNavbar() {
       <div className="flex items-center justify-between gap-3">
         {/* Left: brand */}
         <div className="flex items-center gap-3 min-w-0">
-          <div className="flex items-center justify-center rounded bg-primary size-8 shrink-0">
-            <LockIcon className="size-4 text-primary-foreground" />
-          </div>
+          <DorrMark className="size-8 shrink-0" title="dorr" />
           <div className="flex flex-col leading-none min-w-0">
             <div className="flex items-baseline gap-2">
               <span className="text-lg sm:text-2xl font-display lowercase leading-none">dorr</span>
