@@ -196,16 +196,6 @@ export default function RestingOrders() {
             ))}
           </AnimatePresence>
         )}
-
-        <div className="flex items-start gap-1.5 pt-1 text-[9px] text-muted-foreground/80 leading-snug">
-          <Badge variant="outline" className="text-[9px] h-4 shrink-0">
-            dorr private
-          </Badge>
-          <span>
-            The trigger price is never broadcast — limit orders rest as a ZK commitment and fill only when the
-            mark crosses your level. Stop-hunters have nothing to aim at.
-          </span>
-        </div>
       </CardContent>
     </Card>
   );

@@ -158,18 +158,6 @@ export default function PublicFeed() {
             ))
         )}
       </CardContent>
-
-      <div className="px-3 py-2 border-t border-border/60">
-        <div className="flex items-start gap-1.5 text-[9px] text-muted-foreground/80 leading-snug">
-          <Badge variant="outline" className="text-[9px] h-4 shrink-0">
-            dorr private
-          </Badge>
-          <span>
-            orders publish only a ZK commitment — side, size, leverage and trader stay hidden until
-            settlement anchors on Cardano.
-          </span>
-        </div>
-      </div>
     </Card>
   );
 }

@@ -183,18 +183,6 @@ export default function ActivityLog() {
           </AnimatePresence>
         )}
       </CardContent>
-
-      <div className="px-3 py-2 border-t border-border/60">
-        <div className="flex items-start gap-1.5 text-[9px] text-muted-foreground/80 leading-snug">
-          <Badge variant="outline" className="text-[9px] h-4 shrink-0">
-            your timeline
-          </Badge>
-          <span>
-            every position you take, logged — settlement anchors link to Cardano, disclosures stay
-            provable.
-          </span>
-        </div>
-      </div>
     </Card>
   );
 }

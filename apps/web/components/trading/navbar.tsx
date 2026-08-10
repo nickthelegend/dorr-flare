@@ -14,14 +14,19 @@ function Chip({
   value,
   variant = "default",
   pulse = false,
+  title,
 }: {
   label: string;
   value?: string | number;
   variant?: "default" | "success" | "warning" | "destructive";
   pulse?: boolean;
+  title?: string;
 }) {
   return (
-    <div className="flex items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1">
+    <div
+      title={title}
+      className="flex items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1"
+    >
       <Bullet variant={variant} className={cn("rounded-full", pulse && "animate-pulse")} size="sm" />
       <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</span>
       {value !== undefined && (
@@ -31,6 +36,11 @@ function Chip({
   );
 }
 
+/**
+ * Two signals, not five. A trader needs to know the venue is up and that their
+ * collateral is backed; market count, chain readiness and anchor totals are
+ * operator telemetry and live in the hover detail rather than on the chrome.
+ */
 function HealthChips() {
   const { data: health, isError } = useHealth();
   const { data: markets } = useMarkets();
@@ -38,24 +48,23 @@ function HealthChips() {
   const { data: solvency } = useSolvency();
   const up = !!health?.ok && !isError;
 
+  const detail = [
+    `Operator ${up ? "live" : "offline"}`,
+    `${markets?.length ?? health?.markets ?? 0} markets`,
+    `${anchors?.length ?? 0} settlement anchors`,
+  ].join(" · ");
+
   return (
     <div className="hidden md:flex items-center gap-1.5">
       <Chip
-        label="operator"
-        value={up ? "live" : "offline"}
+        label={up ? "live" : "offline"}
         variant={up ? "success" : "destructive"}
         pulse={!up}
+        title={detail}
       />
-      <Chip label="markets" value={markets?.length ?? health?.markets ?? 0} />
-      <Chip
-        label="cardano"
-        value={health?.cardanoReady ? "ready" : "cold"}
-        variant={health?.cardanoReady ? "success" : "warning"}
-      />
-      <Chip label="anchors" value={anchors?.length ?? 0} variant="default" />
       {solvency && (
         <Chip
-          label="solvency"
+          label="backed"
           value={
             solvency.solvent
               ? solvency.collateralizationRatio != null
@@ -64,6 +73,7 @@ function HealthChips() {
               : "under"
           }
           variant={solvency.solvent ? "success" : "destructive"}
+          title={`Collateral reserves ${solvency.solvent ? "fully back" : "do NOT cover"} all credited balances`}
         />
       )}
     </div>

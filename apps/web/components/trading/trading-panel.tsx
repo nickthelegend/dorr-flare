@@ -21,6 +21,7 @@ import {
   Zap,
   Gauge,
   Radio,
+  ChevronRight,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { WalletConnectButton } from "./wallet-connect-button";
@@ -55,6 +56,7 @@ export default function TradingPanel() {
   const [limitPrice, setLimitPrice] = useState("");
   const [limitTouched, setLimitTouched] = useState(false);
   const [slippageBps, setSlippageBps] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [commit, setCommit] = useState<CommitResult | null>(null);
@@ -95,11 +97,13 @@ export default function TradingPanel() {
   }, [markPrice, limitTouched]);
 
   // Numbered leverage stops (like the original), capped by the market's max leverage.
+  // Four stops, not nine. The slider already covers every value in between, so
+  // extra chips only add scan cost — and wrap onto a second row at rail width.
   const leverageStops = useMemo(() => {
-    const base = [1, 2, 3, 5, 10, 15, 20, 25, 50];
+    const base = [2, 5, 10, 20, 50];
     const stops = base.filter((v) => v <= maxLeverage);
     if (!stops.includes(maxLeverage)) stops.push(maxLeverage);
-    return stops;
+    return stops.slice(-4);
   }, [maxLeverage]);
 
   // Clamp leverage if the market changes to a lower cap.
@@ -360,17 +364,18 @@ export default function TradingPanel() {
               </button>
             </div>
           </div>
-          <p className="text-[10px] text-muted-foreground leading-snug">
+          <p
+            className="text-[10px] text-muted-foreground leading-snug"
+            title={
+              privacyMode === "private"
+                ? "Side, size and leverage stay hidden until settlement — bots can't front-run what they can't see."
+                : "Foil mode leaks your full order to the public feed, like a transparent DEX, so you can watch it get front-run."
+            }
+          >
             {privacyMode === "private" ? (
-              <>
-                <span className="text-primary font-semibold">The public sees only a hash.</span> Side, size and
-                leverage stay hidden until settlement — bots can&apos;t front-run what they can&apos;t see.
-              </>
+              <>The public sees only a hash.</>
             ) : (
-              <>
-                <span className="text-destructive font-semibold">Everything is broadcast.</span> Foil mode leaks
-                your full order to the public feed, like a transparent DEX. Front-runners say thanks.
-              </>
+              <span className="text-destructive">Your full order is broadcast.</span>
             )}
           </p>
 
@@ -388,9 +393,11 @@ export default function TradingPanel() {
                   <Radio className={cn("size-3.5", sealMode ? "text-primary" : "text-muted-foreground")} />
                   Seal from the operator (drand timelock)
                 </div>
-                <p className="text-[10px] text-muted-foreground leading-snug">
-                  Your browser encrypts the order to a drand round — the operator gets only ciphertext and{" "}
-                  <span className="text-primary">can&apos;t read it</span> until the batch freezes. Clears at one uniform price.
+                <p
+                  className="text-[10px] text-muted-foreground leading-snug"
+                  title="Your browser encrypts the order to a future drand round. The operator holds only ciphertext and cannot read it until the batch freezes, then the whole epoch clears at one uniform price."
+                >
+                  Encrypted in your browser — even the operator can&apos;t read it.
                 </p>
               </div>
             </div>
@@ -478,18 +485,42 @@ export default function TradingPanel() {
                 dUSD
               </div>
             </div>
-            <p className="text-[10px] text-muted-foreground leading-snug">
-              <span className="text-primary font-semibold">Rests hidden.</span> The order waits off the public
-              feed and fills only when the mark crosses your price — no one can see or front-run the trigger.
+            <p
+              className="text-[10px] text-muted-foreground leading-snug"
+              title="The order waits off the public feed and fills only when the mark crosses your price, so no one can see or front-run the trigger."
+            >
+              Rests hidden until the mark crosses it.
             </p>
           </div>
         )}
 
-        {/* Slippage tolerance (market orders) — optional guard */}
+        {/* Slippage tolerance (market orders) — optional guard, collapsed by default */}
         {!isLimit && (
           <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => setShowAdvanced((v) => !v)}
+              className="flex w-full items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ChevronRight className={cn("size-3 transition-transform", showAdvanced && "rotate-90")} />
+              Advanced
+              {slippageNum > 0 && (
+                <span className="ml-auto font-mono text-[10px] text-foreground normal-case tracking-normal">
+                  max slip {(slippageNum / 100).toFixed(2)}%
+                </span>
+              )}
+            </button>
+          </div>
+        )}
+
+        {!isLimit && showAdvanced && (
+          <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label htmlFor="slippage" className="text-xs">
+              <Label
+                htmlFor="slippage"
+                className="text-xs"
+                title="If the fill would move worse than this versus the index, the order is rejected and left resting instead of filling at a bad price."
+              >
                 Max slippage
                 <span className="ml-1 text-muted-foreground normal-case">(optional)</span>
               </Label>
@@ -522,10 +553,6 @@ export default function TradingPanel() {
                 bps
               </div>
             </div>
-            <p className="text-[10px] text-muted-foreground leading-snug">
-              If the fill would move worse than this vs the index, the order is rejected and left resting
-              instead of filling at a bad price.
-            </p>
           </div>
         )}
 
