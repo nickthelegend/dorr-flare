@@ -17,7 +17,7 @@
  *
  * Residual trust (honest): drand liveness/threshold (external, decentralized),
  * and operator censorship/liveness (mitigated by anchoring the frozen batch set
- * on Cardano before any key exists). The clearing math is not yet ZK-proven.
+ * on-chain before any key exists). The clearing math is not yet ZK-proven.
  */
 import { timelockEncrypt, timelockDecrypt, HttpChainClient, HttpCachingChain, roundAt, Buffer as TlockBuffer } from "tlock-js";
 import { createHash, randomBytes } from "node:crypto";

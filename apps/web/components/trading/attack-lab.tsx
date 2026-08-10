@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Bullet } from "@/components/ui/bullet";
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Loader2,
@@ -240,7 +241,9 @@ export function AttackLabBody() {
     : "0 / 25,000";
 
   return (
-    <div className="space-y-4">
+    // Header + controls stay pinned; the result below owns the remaining height.
+    <div className="grid grid-rows-[auto_minmax(0,1fr)] h-full min-h-0">
+      <div className="space-y-3 p-4 pb-3 border-b">
       {/* header */}
       <div className="space-y-1">
         <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-muted-foreground">
@@ -282,7 +285,9 @@ export function AttackLabBody() {
           Run attack
         </Button>
       </div>
+      </div>
 
+      <div className="min-h-0 overflow-y-auto p-4 space-y-4">
       {error && (
         <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive">
           {error} — is the operator running?
@@ -298,62 +303,98 @@ export function AttackLabBody() {
 
       {result && (
         <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {/* PUBLIC — transparent DEX, victim sandwiched */}
-            <Timeline
-              title="Transparent DEX"
-              side="public"
-              icon={<Eye className="size-3.5" />}
-              revealed={pubRevealed}
-              steps={result.publicRun.steps}
-              badge={
-                <Badge variant="outline-destructive" className="text-[9px] h-4">
-                  order visible to bot
-                </Badge>
-              }
-              outcome={
-                <div className="rounded-md border border-destructive/50 bg-destructive/10 px-2.5 py-2 flex items-center gap-2">
-                  <ShieldOff className="size-4 text-destructive shrink-0" />
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-destructive uppercase tracking-wide">
-                      Sandwiched
-                    </div>
-                    <div className="font-mono text-[11px] text-destructive tabular-nums">
-                      −{formatUsd(result.publicRun.victimExtraCostUsd)} ·{" "}
-                      {result.publicRun.victimSlippageBps.toFixed(1)} bps
+          {(() => {
+            // Defined once and rendered in both layouts — the same two runs,
+            // side-by-side with a draggable divider on desktop, stacked on mobile.
+            const publicTimeline = (
+              <Timeline
+                title="Transparent DEX"
+                side="public"
+                icon={<Eye className="size-3.5" />}
+                revealed={pubRevealed}
+                steps={result.publicRun.steps}
+                badge={
+                  <Badge variant="outline-destructive" className="text-[9px] h-4">
+                    order visible to bot
+                  </Badge>
+                }
+                outcome={
+                  <div className="rounded-md border border-destructive/50 bg-destructive/10 px-2.5 py-2 flex items-center gap-2">
+                    <ShieldOff className="size-4 text-destructive shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-destructive uppercase tracking-wide">
+                        Sandwiched
+                      </div>
+                      <div className="font-mono text-[11px] text-destructive tabular-nums">
+                        −{formatUsd(result.publicRun.victimExtraCostUsd)} ·{" "}
+                        {result.publicRun.victimSlippageBps.toFixed(1)} bps
+                      </div>
                     </div>
                   </div>
-                </div>
-              }
-            />
+                }
+              />
+            );
 
-            {/* PRIVATE — dorr, attack fails */}
-            <Timeline
-              title="dorr (private)"
-              side="private"
-              icon={<Lock className="size-3.5" />}
-              revealed={privRevealed}
-              steps={result.privateRun.steps}
-              badge={
-                <Badge variant="outline-success" className="text-[9px] h-4">
-                  bot sees a hash
-                </Badge>
-              }
-              outcome={
-                <div className="rounded-md border border-success/50 bg-success/10 px-2.5 py-2 flex items-center gap-2">
-                  <ShieldCheck className="size-4 text-success shrink-0" />
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-success uppercase tracking-wide">
-                      Attack failed
-                    </div>
-                    <div className="font-mono text-[11px] text-success tabular-nums">
-                      {cracks} cracks · $0.00 lost
+            const privateTimeline = (
+              <Timeline
+                title="dorr (private)"
+                side="private"
+                icon={<Lock className="size-3.5" />}
+                revealed={privRevealed}
+                steps={result.privateRun.steps}
+                badge={
+                  <Badge variant="outline-success" className="text-[9px] h-4">
+                    bot sees a hash
+                  </Badge>
+                }
+                outcome={
+                  <div className="rounded-md border border-success/50 bg-success/10 px-2.5 py-2 flex items-center gap-2">
+                    <ShieldCheck className="size-4 text-success shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-success uppercase tracking-wide">
+                        Attack failed
+                      </div>
+                      <div className="font-mono text-[11px] text-success tabular-nums">
+                        {cracks} cracks · $0.00 lost
+                      </div>
                     </div>
                   </div>
+                }
+              />
+            );
+
+            return (
+              <>
+                {/*
+                  The two runs are meant to be read against each other, and the
+                  steps are different lengths, so a fixed 50/50 split always
+                  squeezes one of them — let the presenter drag the divider.
+                */}
+                {/* The group sets an inline `display: flex`, so a `hidden`
+                    class on it can never win — gate it from a wrapper. */}
+                <div className="hidden md:block min-h-[400px]">
+                  <ResizablePanelGroup
+                    direction="horizontal"
+                    className="rounded-lg border bg-muted/10"
+                  >
+                    <ResizablePanel defaultSize={50} minSize={22} className="!overflow-y-auto p-3">
+                      {publicTimeline}
+                    </ResizablePanel>
+                    <ResizableHandle withHandle />
+                    <ResizablePanel defaultSize={50} minSize={22} className="!overflow-y-auto p-3">
+                      {privateTimeline}
+                    </ResizablePanel>
+                  </ResizablePanelGroup>
                 </div>
-              }
-            />
-          </div>
+
+                {/* Dragging a divider is a poor fit on a phone — stack instead. */}
+                <div className="md:hidden space-y-3">
+                  {publicTimeline}
+                  {privateTimeline}
+                </div>
+              </>
+            );
+          })()}
 
           {/* the proof: 0 / 25,000 brute-force matches — made prominent */}
           <div className="rounded-lg border border-primary/40 bg-primary/5 p-3 space-y-2">
@@ -380,6 +421,7 @@ export function AttackLabBody() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -662,14 +704,30 @@ export function DemoShowcase() {
           <span className="hidden sm:inline">Attack Lab</span>
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-2xl" showCloseButton>
+      {/*
+        The lab is the demo's centrepiece and its output is long (two attack
+        timelines plus the brute-force proof). Bound it to the viewport and let
+        the body scroll, rather than letting the dialog grow past the top and
+        bottom of the screen — which is exactly what it did at 2xl.
+      */}
+      {/* flex, not grid: the sr-only title/description are children too, so a
+          fixed grid-rows template would put the tabs in an implicit row. */}
+      <DialogContent
+        className="!max-w-[min(96vw,1120px)] w-[min(96vw,1120px)] h-[86vh] max-h-[880px] !flex flex-col p-0 gap-0 overflow-hidden"
+        showCloseButton
+      >
         <DialogTitle className="sr-only">dorr MEV Attack Lab</DialogTitle>
         <DialogDescription className="sr-only">
           Run a sandwich attack against a transparent DEX and watch the same attack fail against dorr — plus the
           uniform-price batch auction and a side-by-side A/B comparison.
         </DialogDescription>
-        <Tabs value={tab} onValueChange={setTab} className="gap-4">
-          <TabsList className="w-full">
+        <Tabs
+          value={tab}
+          onValueChange={setTab}
+          className="gap-0 min-h-0 flex-1 flex flex-col"
+        >
+          {/* pr-10 keeps the last tab clear of the absolutely-positioned close button */}
+          <TabsList className="w-full rounded-none border-b bg-transparent p-2 pr-10">
             <TabsTrigger value="attack" className="gap-1.5">
               <Swords className="size-3.5" /> Attack Lab
             </TabsTrigger>
@@ -683,16 +741,17 @@ export function DemoShowcase() {
               <Eye className="size-3.5" /> A/B
             </TabsTrigger>
           </TabsList>
-          <TabsContent value="attack">
+          {/* Each tab owns its own scroll region so the dialog chrome stays put. */}
+          <TabsContent value="attack" className="flex-1 min-h-0 overflow-hidden">
             <AttackLabBody />
           </TabsContent>
-          <TabsContent value="sealed">
+          <TabsContent value="sealed" className="flex-1 min-h-0 overflow-y-auto p-4">
             <SealedBidBody />
           </TabsContent>
-          <TabsContent value="batch">
+          <TabsContent value="batch" className="flex-1 min-h-0 overflow-y-auto p-4">
             <BatchAuctionBody />
           </TabsContent>
-          <TabsContent value="ab">
+          <TabsContent value="ab" className="flex-1 min-h-0 overflow-y-auto p-4">
             <AbShowcaseBody />
           </TabsContent>
         </Tabs>

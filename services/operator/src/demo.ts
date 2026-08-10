@@ -8,7 +8,7 @@
  *   public  → order details are in the public feed BEFORE execution, so the bot
  *             front-runs (buys ahead), the victim fills at a worse price, and the
  *             bot back-runs for profit — a classic sandwich.
- *   private → the public sees only the Midnight commitment hash, so the bot is
+ *   private → the public sees only the commitment hash, so the bot is
  *             blind and does nothing; the victim fills at the fair price.
  *
  * The delta between the two victim fills is the value the ZK order commitment
@@ -192,7 +192,7 @@ function assembleResult(
       victimEntry: legs.victimEntryPrivate,
       victimSlippageBps: privSlipBps,
       orderVisibleToBot: false,
-      publicSees: "only a 32-byte Midnight commitment hash",
+      publicSees: "only a 32-byte commitment hash",
     },
     headline:
       `On a public perp the bot front-runs and the victim pays ` +
@@ -290,7 +290,7 @@ export function runAttackLab(p: AbParams): AttackLabResult {
   const privateRun = {
     steps: [
       { ms: 0, actor: "bot", ok: true, text: "🤖 Sandwich bot scanning the public mempool / order flow…" },
-      { ms: 320, actor: "dorr", ok: false, text: `🔒 Only a Midnight commitment is public: ${commitment.slice(0, 18)}… — no side, size, price, or leverage` },
+      { ms: 320, actor: "dorr", ok: false, text: `🔒 Only the commitment is public: ${commitment.slice(0, 18)}… — no side, size, price, or leverage` },
       { ms: 700, actor: "bot", ok: false, text: `🔓 Bot attempts to crack the commitment — ${bruteForceAttempts.toLocaleString()} SHA-256 preimage guesses…` },
       { ms: 1500, actor: "dorr", ok: false, text: `❌ ${bruteForceMatches} / ${bruteForceAttempts.toLocaleString()} matches — the 128-bit nonce makes the search space 2¹²⁸ (infeasible)` },
       { ms: 1800, actor: "bot", ok: false, text: "❓ Bot has no direction, no size — a sandwich cannot even be constructed" },
