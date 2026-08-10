@@ -96,6 +96,7 @@
         "@dorr/engine": "workspace:*",
         "@hono/node-server": "^1.14.0",
         "@lucid-evolution/lucid": "0.4.29",
+        "@noble/curves": "1.9.7",
         "@stricahq/bip32ed25519": "^1.1.2",
         "@stricahq/cbors": "1.0.4",
         "@stricahq/cip08": "^1.0.4",
