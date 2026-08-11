@@ -1,0 +1,10 @@
+# One image, two entry points. The start command is set per Railway service
+# (operator → services/operator start, enclave → services/operator enclave)
+# rather than here: a startCommand in railway.json is config-as-code and would
+# override the per-service setting, which is how the enclave service ended up
+# booting a second copy of the operator.
+[phases.setup]
+nixPkgs = ["bun"]
+
+[phases.install]
+cmds = ["bun install --frozen-lockfile || bun install"]

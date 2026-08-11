@@ -365,7 +365,10 @@ export function Landing() {
               matching and execution, like a sequencer. What is cryptographic today is that it
               cannot see or front-run a sealed order, the epoch clears at one price, collateral is
               self-custodied, and the settlement contract enforces the price band on-chain. The
-              clearing arithmetic is not yet ZK-proven.
+              clearing arithmetic is not yet ZK-proven.{" "}
+              <Link href="/verify" className="text-[#7AA6FF] hover:underline">
+                See exactly what is and isn&apos;t proven →
+              </Link>
             </p>
           </div>
         </section>
@@ -419,6 +422,9 @@ export function Landing() {
                 {s.label}
               </a>
             ))}
+            <Link href="/verify" className="hover:text-white/70 transition-colors">
+              Verify
+            </Link>
             <Link href="/trade" className="text-white/60 hover:text-white transition-colors">
               Launch app
             </Link>

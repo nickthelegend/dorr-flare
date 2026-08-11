@@ -24,3 +24,4 @@ apps/web/.claude/
 
 # demo take artifacts (large binaries)
 demo-take/
+.vercel

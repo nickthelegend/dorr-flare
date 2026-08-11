@@ -8,7 +8,8 @@ export const DORR_ROOT = resolve(_here, "../../..");
 dotenv({ path: resolve(DORR_ROOT, ".env") });
 
 export const env = {
-  port: Number(process.env.OPERATOR_PORT || 8790),
+  // Hosts inject PORT; OPERATOR_PORT stays as an explicit local override.
+  port: Number(process.env.OPERATOR_PORT || process.env.PORT || 8790),
   /**
    * Every value-moving call (commit/seal/execute/close/margin/stops/cancel/
    * disclose) must carry an EIP-191 signature from the acting address.

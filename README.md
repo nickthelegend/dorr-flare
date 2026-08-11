@@ -7,6 +7,11 @@ Private order flow on **Flare** — your order is a commitment the operator itse
 
 `FLR · XRP · BTC · ETH · SOL · DOGE` · up to 20× · **FXRP**-margined · settled on Flare Coston2
 
+**Live on Coston2 testnet → [dorr-flare.vercel.app](https://dorr-flare.vercel.app)**
+[Trade](https://dorr-flare.vercel.app/trade) · [Verify](https://dorr-flare.vercel.app/verify) · [operator](https://operator-production-638b.up.railway.app/health) · [enclave](https://enclave-production-66e4.up.railway.app/attestation)
+
+Grab free C2FLR and FTestXRP from the [Flare faucet](https://faucet.flare.network/coston2), deposit, and seal an order. Costs nothing.
+
 </div>
 
 ---
@@ -14,6 +19,15 @@ Private order flow on **Flare** — your order is a commitment the operator itse
 ## Submission — Flare Summer Signal
 
 **Bounty:** **Confidential Compute Apps** (primary) · **Interoperable Asset Products** (secondary — FXRP is the margin asset and the vault's only collateral).
+
+**The one-line claim, stated so it can be checked:** dorr is the only entry whose enclave quote
+is *verified on-chain and bound to the specific batch it settled*. `TEEAttestationVerifier`
+recovers the signature, checks the `teeId` is registered and the measurement matches, and
+`DorrBatchSettlement` refuses any batch whose `payloadHash` is not
+`keccak256(epochId, membershipRoot, clearingPrice, orderCount)`. An enclave you have to trust
+is a different product from an enclave the chain checks — see
+[/verify](https://dorr-flare.vercel.app/verify), which publishes what is *not* proven beside
+what is.
 
 **Target user:** leveraged perp traders whose order flow is large enough to be worth front-running — the people currently paying a timing tax on every fill — plus the market makers quoting against them, who price that toxicity into spreads.
 

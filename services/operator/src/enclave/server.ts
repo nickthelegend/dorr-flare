@@ -41,6 +41,7 @@ import {
 import { clearBatchUniform, type BatchOrder } from "../batch.js";
 import { readFeed } from "../ftso.js";
 import { marketById } from "../markets.js";
+import { getHardwareQuote, detectTee } from "./hardware.js";
 import { signBatchQuote, enclaveAddress, enclaveConfigured } from "../attestation.js";
 
 // ---------------------------------------------------------------------------
@@ -119,7 +120,11 @@ app.get("/", (c) =>
  * verifies quotes against `signer`. Under Flare Confidential Compute the vTPM
  * quote and image digest attach here.
  */
-app.get("/attestation", (c) => {
+app.get("/attestation", async (c) => {
+  // Ask the hardware live rather than reporting a cached or declared value: an
+  // attestation endpoint that answers from an environment variable is only
+  // repeating what the operator typed.
+  const hw = await getHardwareQuote();
   return c.json({
     teeId: teeIdOf(),
     measurement: measurement(),
@@ -127,12 +132,18 @@ app.get("/attestation", (c) => {
     eciesPublicKey: "0x" + keypair.publicKey.toString("hex"),
     verifierContract: env.flare.teeVerifier || null,
     chainId: env.flare.chainId,
-    hardwareAttestation: {
-      available: false,
-      kind: "flare-confidential-compute / gcp-confidential-space vTPM",
+    hardwareAttestation: hw,
+    onChainVerification: {
+      contract: env.flare.teeVerifier || null,
+      checks: [
+        "teeId is registered",
+        "measurement equals the verifier's expectedMeasurement",
+        "signature recovers to the registered enclave signer",
+        "payloadHash equals keccak256(epochId, membershipRoot, clearingPrice, orderCount)",
+      ],
       note:
-        "Software attestation active: the enclave signing key is registered on-chain and quotes are payload-bound. " +
-        "A hardware quote (PCR values + image digest) attaches here when deployed under Confidential Compute.",
+        "DorrBatchSettlement refuses any batch whose quote fails these, so the enclave is checked by the chain " +
+        "rather than trusted by the operator.",
     },
   });
 });
@@ -233,6 +244,11 @@ app.post("/clear", async (c) => {
     orderCount: opened.length,
   });
 
+  // Ask the hardware to sign over THIS batch. A TDX quote covers its report_data,
+  // so binding the payload hash there turns "an enclave existed" into "this
+  // enclave held this batch" — the same statement the on-chain verifier enforces.
+  const hardware = await getHardwareQuote(quote.payloadHash);
+
   for (const o of batch) pending.delete(o.id);
   clearedEpochs.push({
     epochId,
@@ -267,12 +283,17 @@ app.post("/clear", async (c) => {
     })),
     attestation: quote.attestation,
     attestationSigner: quote.signer,
+    payloadHash: quote.payloadHash,
+    // The hardware's own signature over this batch, when there is hardware. On a
+    // plain host this is `available:false` and says so — an enclave that cannot
+    // prove itself should not be allowed to imply that it did.
+    hardwareAttestation: hardware,
   });
 });
 
 // ---------------------------------------------------------------------------
 
-const PORT = Number(process.env.ENCLAVE_PORT || 8795);
+const PORT = Number(process.env.ENCLAVE_PORT || process.env.PORT || 8795);
 
 function boot() {
   // The ECIES key is generated in-process at boot and never written anywhere.
