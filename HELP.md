@@ -5,6 +5,12 @@ You have one confidential-compute machine and three products that want it: **dor
 prediction markets). This is how to point all three at it without the sharing quietly
 undoing the thing you are sharing.
 
+> **Read [INTEGRATION.md](INTEGRATION.md) first.** It corrects the obvious plan: molfi is
+> already registered PRODUCTION on Flare's own `FlareTeeManager`, and hadal's contract
+> already checks the native machine registry — so the shared enclave should end up on
+> molfi's attested container, not on the Heroku box described below. The Heroku instance is
+> a working staging environment, not the submission claim.
+
 ---
 
 ## The live one
