@@ -21,3 +21,6 @@ tools/scripts/*.log
 # Midnight localnet runtime DB (regenerated each run)
 vendor/zkperps/midnight-level-db/
 apps/web/.claude/
+
+# demo take artifacts (large binaries)
+demo-take/
