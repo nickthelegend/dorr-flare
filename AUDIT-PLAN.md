@@ -119,3 +119,38 @@ Status: `PASS` / `FAIL` / `UNTESTABLE` (with reason).
 | G4 | Lint | Zero errors |
 | G5 | Build | Web builds |
 | G6 | Zero mocks | No mock/stub/fallback data in shipped source |
+
+---
+
+# RESULTS
+
+Run against the deployed stack. Fixes were made, redeployed, and re-verified live.
+
+## Fixed during this run
+
+| # | What was wrong | Fix |
+|---|---|---|
+| A-hero | `LIVE` badge over the hard-coded string "It got $0.00" — the landing page fetched nothing | Fetches `/demo/ab`; says LIVE only once measured, and only if `orderVisibleToBot` is false. Now reads "On a public DEX it took $205.10" — a real number that moves with price |
+| A-figure | "125 tests, all green" — actual count 134 | Corrected, with a comment naming both commands |
+| G4 | **Lint had never run.** Flat config + Next 14 (wants `.eslintrc`) + neither `eslint` nor `eslint-config-next` installed → interactive prompt. Every prior "0 lint errors" was vacuous | Matching versions installed, switched to `.eslintrc.json` |
+| G4a | `useEffect` calling `invalidate(address)` without `address` in deps — a wallet switch mid-commit refreshes the **previous** account's cache | Deps added; `executeStarted` ref already guards re-entry |
+| G4b | Unescaped entity in `portfolio.tsx` | Escaped |
+| D14 | Five `:address` routes accepted anything; a typo'd address returned `200 []`, which a positions panel renders as "your positions are gone" | `badAddress()` on all five → 400 |
+| **DEPLOY** | **The last 2 production deploys had failed (one 7h old).** Root Directory `.` but `next` lives in `apps/web` → "No Next.js version detected". The site was serving a stale build and **no change was shippable** | Root Directory → `apps/web`, stale build overrides cleared |
+| **ENV** | CLI deploy uploaded local `apps/web/.env.local`, baking **`http://localhost:8790`** into production | Real URLs set as Vercel project env vars; `.vercelignore` added so local env can never ship |
+
+## Status
+
+- **A landing** A1–A4, A6, A8, A9 PASS. A5 (reduced motion), A7 (CTA→/trade) **not tested**.
+- **B trade** B1–B7, B10, B12–B15, B17, B20 PASS. B8, B9, B18, B19 **not tested**. B11, B16 and the balance half of B7 **need a connected wallet — untested**.
+- **C verify** C1–C6 PASS. 4/4 addresses match `/flare/info`; states plainly "There is no hardware attestation here."
+- **D operator** all PASS after fixes. D9/D13/D15 were **plan errors, not product bugs** — `/attestation` and `/status` live on the enclave, and `reconcileVault` genuinely reads chain (a 0 balance is a true read).
+- **E enclave** E1–E5, E7, E8 PASS. E6 (cross-tenant isolation over HTTP) **not re-tested this run**.
+- **F chain** F1–F3 PASS — real code at all 4 addresses; **both** TEE identities resolve on `teeSigner`. F4, F5 **not tested**.
+- **G repo** all PASS. 103 bun + 31 Solidity, typecheck clean, lint clean, build clean, zero mocks in shipped source.
+
+## Known-honest, not fixed
+
+- **D3 candle gaps.** The repair sweep works — SOL went 2 gaps → 0 on re-request. FLR keeps one 180s gap because the on-chain FTSO history has no sample there. The operator **refuses to fabricate a candle the oracle never published**. My "zero gaps" criterion was wrong; inventing the bar would have been the exact violation this audit exists to catch.
+- **Cold-start degradation.** After any restart the public Coston2 RPC 429s under the 6-market fan-out: solvency errors and a market's chart shows ~4 bars until its first request finishes the lazy backfill (~10s). Self-heals. Heroku cycles dynos daily, so a judge can hit this.
+- **No hardware attestation.** `/tee/attestation` reports `available:false, mode:none`. Correct, and stated on `/verify`.

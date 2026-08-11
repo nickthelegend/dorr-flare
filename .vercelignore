@@ -1,0 +1,6 @@
+# The CLI uploads the working directory, not the git tree. Without this, a local
+# .env.local (localhost URLs) ships into the build and the deployed app silently
+# points at 127.0.0.1 — which is exactly how the operator URL got broken once.
+.env
+.env.local
+.env.*.local
