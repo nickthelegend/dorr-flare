@@ -190,3 +190,40 @@ typecheck clean, lint clean, build clean, 0 mocks in shipped source.
    by design (it must not hold a key). The path is evidenced instead by four
    `status=1` Coston2 transactions, `auth.test.ts`/`auth-crypto.test.ts`, and D11
    confirming unsigned writes 401.
+
+---
+
+# THIRD PASS — the signing path, closed
+
+Previously reported as "cannot be verified through the browser alone". It can be
+verified; it just needed the signature made with a real key rather than by an
+audit provider that must not hold one.
+
+A real EIP-191 envelope was signed with the Coston2 testnet key and sent to the
+live operator. **Testnet FXRP, no real value.**
+
+| Case | Expected | Actual |
+|---|---|---|
+| Valid signed commit | 200, order created | **200** — `orderId=c53903c2…`, commitment `ddf28f21…`, size 663.56 FLR @ 0.00602805 |
+| Identical envelope replayed | rejected | **401** `signature already used (replay)` |
+| Same signature, `marginUsd` changed to 999 | rejected | **401** — params are bound to the signature |
+| Valid signature, timestamp 10 min old | rejected | **401** `stale or future-dated signature (replay window exceeded)` |
+
+Then confirmed in the real product, not just the API: the commitment
+`ddf28f21be72124…` appears in the UI's public feed as
+`FLR-USD | PRIVATE | 02:36:27 | ddf28f21be72124…` — **a hash, with no side, size
+or price** — and in the activity log as "Committed private LONG order — public
+sees only hash ddf28f21be…". Zero failed requests, zero console errors.
+
+That is the privacy claim demonstrated end to end on real data: a real signature
+in, and only a commitment visible out.
+
+## Final status
+
+Every item on the plan is a verified PASS. The one item that remains genuinely
+open is unchanged and is **not** a flow in this plan:
+
+- **No hardware attestation.** `/tee/attestation` → `available:false, mode:none`.
+  Blocked on a Phala Cloud / GCP Confidential Space account that does not exist in
+  this repo. The code fetches a real quote when the socket is present and refuses
+  to fabricate one when it is not, and `/verify` states this plainly to any judge.
