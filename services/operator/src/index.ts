@@ -4,13 +4,13 @@ import { app, warmChartHistory } from "./routes.js";
 import { MARKETS } from "./markets.js";
 import { validateFeeds, startPricePolling, getPrice } from "./ftso.js";
 import { seedPool, recenter } from "./vamm.js";
-import { loadState, getState } from "./state.js";
+import { loadStateAsync, getState } from "./state.js";
 import { flareConfigured, syncLockedMargin } from "./flare.js";
 import { applyFundingTick, scanLiquidations, scanLimitOrders, scanStops, settleSealedBatch, reconcileLockedMargin } from "./trading.js";
 
 async function main() {
   console.log("dorr operator starting…");
-  loadState();
+  await loadStateAsync();
 
   // Heal any margin stranded by a crash mid-flow before serving a single request.
   for (const r of reconcileLockedMargin()) {

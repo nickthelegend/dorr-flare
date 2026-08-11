@@ -4,6 +4,7 @@
  * this store owns the facts.
  */
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { connectStore, saveStore, mongoConfigured } from "./store.js";
 import { resolve } from "node:path";
 import { DORR_ROOT } from "./env.js";
 
@@ -256,12 +257,34 @@ export function loadState(): StateFile {
   return state;
 }
 
+/**
+ * Load the ledger from durable storage when MONGODB_URI is set, else from disk.
+ *
+ * Deliberately not wrapped in a try/catch: if a database is configured and
+ * unreachable, booting anyway would produce an operator that serves an empty
+ * ledger and looks fine, then loses everything again on the next restart. Fail
+ * loudly at boot instead.
+ */
+export async function loadStateAsync(): Promise<StateFile> {
+  if (!mongoConfigured()) return loadState();
+  const stored = await connectStore();
+  state = stored ? { ...empty(), ...(stored as Partial<StateFile>) } : empty();
+  return state;
+}
+
 export function getState(): StateFile {
   return state;
 }
 
 /** Atomic persist (write temp, rename). Call after every mutation. */
 export function persist(): void {
+  // Durable path: queue a debounced write and skip the file entirely. On an
+  // ephemeral dyno the file is write-only storage — it costs IO on every
+  // mutation and is gone at restart, so writing both would be theatre.
+  if (mongoConfigured()) {
+    saveStore(state);
+    return;
+  }
   if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
   const tmp = `${STATE_PATH}.tmp`;
   writeFileSync(tmp, JSON.stringify(state, null, 2));
