@@ -144,7 +144,11 @@ export default function TradingPanel() {
           toast.error("Execute failed", { description: humanizeError(e) });
         });
     }
-  }, [phase, commit, commitJob.data]);
+  // `address` and `invalidate` belong here: if the wallet changes while a commit
+  // job is still in flight, the completion handler would otherwise close over the
+  // previous address and refresh that account's cache instead of the current one.
+  // Re-running is safe — `executeStarted` already guards against double-execute.
+  }, [phase, commit, commitJob.data, address, invalidate]);
 
   // When the execute job settles → done.
   useEffect(() => {

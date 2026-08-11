@@ -30,6 +30,19 @@ const bad = (c: Context, msg: string, code: ContentfulStatusCode = 400) =>
   c.json({ error: msg }, code);
 
 /**
+ * Reject anything that is not a 20-byte hex address.
+ *
+ * Without this, a typo'd address is indistinguishable from a real one with
+ * nothing in it: every lookup below filters an in-memory list by string
+ * equality, so garbage matches nothing and returns `200 []`. In a positions
+ * panel that reads as "your positions are gone" rather than "that is not an
+ * address", which is the wrong thing to tell someone about their money.
+ */
+const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
+const badAddress = (c: Context, address: string) =>
+  ADDRESS.test(address) ? null : bad(c, `not a valid address: ${address}`);
+
+/**
  * Gate a value-moving action on a wallet signature. Returns an error string to
  * reject with, or null to proceed. No-op when auth isn't required (dev). The
  * client signs authMessage(action, params, ts) and sends body.auth = {signer, ts, sig}.
@@ -365,6 +378,8 @@ function releaseMarginSoon(address: string): void {
 
 app.get("/account/:address", async (c) => {
   const address = c.req.param("address");
+  const invalid = badAddress(c, address);
+  if (invalid) return invalid;
   const acct = account(address);
   await reconcileVault(address);
   persist();
@@ -498,6 +513,8 @@ app.get("/orders/:id", (c) => {
 
 app.get("/positions/:address", (c) => {
   const address = c.req.param("address");
+  const invalid = badAddress(c, address);
+  if (invalid) return invalid;
   const positions = getState().positions
     .filter((p) => p.address === address)
     .map((p) => {
@@ -623,6 +640,8 @@ app.post("/orders/:id/anchor-commit", async (c) => {
 // resting (private) limit orders for an address
 app.get("/orders/resting/:address", (c) => {
   const address = c.req.param("address");
+  const invalid = badAddress(c, address);
+  if (invalid) return invalid;
   const orders = getState().orders
     .filter((o) => o.address === address && o.status === "committed" && o.orderType === "limit")
     .map((o) => ({ id: o.id, marketId: o.marketId, side: o.side, sizeBase: o.sizeBase, leverage: o.leverage, marginUsd: o.marginUsd, limitPrice: o.limitPrice, commitmentHash: o.commitmentHash, createdAt: o.createdAt }));
@@ -866,6 +885,8 @@ app.post("/batch/settle", async (c) => {
 // a trader's sealed orders (status only — contents stay sealed until settled)
 app.get("/orders/sealed/:address", (c) => {
   const address = c.req.param("address");
+  const invalid = badAddress(c, address);
+  if (invalid) return invalid;
   const orders = getState()
     .sealedOrders.filter((o) => o.address === address)
     .map((o) => ({ id: o.id, marketId: o.marketId, commitment: o.commitment, targetRound: o.targetRound, maxMarginUsd: o.maxMarginUsd, status: o.status, clearingPrice: o.clearingPrice, positionId: o.positionId, droppedReason: o.droppedReason, createdAt: o.createdAt }));
@@ -954,6 +975,8 @@ app.get("/flare/batch/:epochId", async (c) => {
 
 // a trader's on-chain FXRP margin account
 app.get("/flare/account/:address", async (c) => {
+  const invalid = badAddress(c, c.req.param("address"));
+  if (invalid) return invalid;
   if (!flareConfigured()) return bad(c, "Flare contracts not configured", 503);
   try {
     return c.json(await vaultAccount(c.req.param("address")));

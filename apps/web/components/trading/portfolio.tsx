@@ -408,7 +408,7 @@ export default function Portfolio() {
           </div>
         ) : isError ? (
           <div className="flex items-center justify-center py-10 text-sm text-muted-foreground">
-            Operator unreachable — positions will appear when it's back.
+            Operator unreachable — positions will appear when it&apos;s back.
           </div>
         ) : rows.length === 0 ? (
           <div className="flex items-center justify-center py-10 text-sm text-muted-foreground">
