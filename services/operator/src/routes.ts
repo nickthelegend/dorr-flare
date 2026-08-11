@@ -130,6 +130,9 @@ app.get("/markets", (c) => {
 /** Markets whose archive backfill has run (or is running) this process. */
 const historyFilled = new Map<string, Promise<void>>();
 
+/** Serialises archive backfills across all markets — see `ensureHistory`. */
+let backfillChain: Promise<void> = Promise.resolve();
+
 /**
  * Fill a market's candle history from on-chain FTSO reads at past blocks, once.
  *
@@ -147,7 +150,16 @@ export function ensureHistory(marketId: string, feedId: string, minutes = 360): 
   const running = historyFilled.get(marketId);
   if (running) return running;
 
-  const job = (async () => {
+  // Backfills are serialised across markets, not just deduped within one.
+  //
+  // `readFeedHistory` already caps itself at 6 concurrent archive reads, but the
+  // dedupe above is per-market — so a visitor clicking through all six markets
+  // launched six independent walks and put 36 concurrent reads on a shared public
+  // RPC. Measured result: sustained 429s, and five of six charts stuck at two
+  // bars after a restart while only the market being watched ever filled.
+  // Chaining them keeps the ceiling at 6 no matter how many markets are asked
+  // for; each one still completes, just in turn.
+  const job = (backfillChain = backfillChain.then(async () => {
     try {
       const samples = await readFeedHistory(feedId, minutes);
       for (const s of samples) recordPriceSample(marketId, s.price, s.atMs);
@@ -166,7 +178,7 @@ export function ensureHistory(marketId: string, feedId: string, minutes = 360): 
       // above is what stops this from re-reading when there is nothing to fix.
       historyFilled.delete(marketId);
     }
-  })();
+  }));
   historyFilled.set(marketId, job);
   return job;
 }

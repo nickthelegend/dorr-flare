@@ -48,6 +48,17 @@ const FTSO_ABI = [
     stateMutability: "view",
     type: "function",
   },
+  {
+    inputs: [{ name: "_feedIds", type: "bytes21[]" }],
+    name: "getFeedsById",
+    outputs: [
+      { name: "_values", type: "uint256[]" },
+      { name: "_decimals", type: "int8[]" },
+      { name: "_timestamp", type: "uint64" },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
 ] as const;
 
 export interface FtsoPrice {
@@ -112,6 +123,38 @@ export async function readFeed(feedId: string): Promise<FtsoPrice> {
   };
 }
 
+/**
+ * Read every feed in a single `eth_call`.
+ *
+ * The poll used to fan six concurrent `getFeedById` calls at a shared public RPC
+ * every tick. Measured consequence: sustained `Status: 429`, which starved the
+ * chart backfill so hard that after a restart five of six markets sat at two
+ * bars indefinitely while FLR — the one being viewed, so retried most — was the
+ * only market that recovered. FTSO v2 exposes `getFeedsById` for exactly this;
+ * one call carries the whole venue.
+ *
+ * Throws as a unit: the caller falls back to per-feed reads, so one unreadable
+ * feed cannot take the other five off the venue.
+ */
+export async function readFeeds(feedIds: string[]): Promise<FtsoPrice[]> {
+  const ftso = await resolveFtsoAddress();
+  const [values, decimals, timestamp] = (await publicClient().readContract({
+    address: ftso,
+    abi: FTSO_ABI,
+    functionName: "getFeedsById",
+    args: [feedIds as `0x${string}`[]],
+  })) as [readonly bigint[], readonly number[], bigint];
+
+  const fetchedAt = Date.now();
+  return feedIds.map((feedId, i) => ({
+    feedId: norm(feedId),
+    price: Number(values[i]) / 10 ** Number(decimals[i]),
+    conf: 0,
+    publishTime: Number(timestamp),
+    fetchedAt,
+  }));
+}
+
 /** How many poll ticks between re-probes of a disabled feed. */
 const PROBE_EVERY = 10;
 let pollTick = 0;
@@ -125,11 +168,32 @@ export async function pollOnce(): Promise<void> {
   const probing = pollTick % PROBE_EVERY === 0;
   const feeds = MARKETS.filter((m) => probing || !disabledFeeds.has(norm(m.feedId)));
 
+  // One batched call for the whole venue, retried with backoff.
+  //
+  // Retrying rather than fanning out matters: the thing that exhausts the shared
+  // public RPC is the chart's archive backfill (hundreds of reads at past
+  // blocks), and answering its 429 with six more concurrent calls amplifies the
+  // pressure at exactly the wrong moment. If the batch still will not land, skip
+  // the tick — the next one is `pollMs` away and `latest` already holds a real
+  // price. A stale-by-one-tick quote is honest; six extra calls into a
+  // rate-limited endpoint just deepens the hole.
+  let batched: Map<string, FtsoPrice>;
+  try {
+    const rows = await withRetry(() => readFeeds(feeds.map((m) => m.feedId)));
+    batched = new Map(rows.map((r) => [r.feedId, r]));
+  } catch (e) {
+    console.error(`[ftso] batch read failed after retries, skipping tick: ${String(e).slice(0, 120)}`);
+    return;
+  }
+
   await Promise.all(
     feeds.map(async (m) => {
       const key = norm(m.feedId);
       try {
-        const p = await readFeed(m.feedId);
+        // A real oracle read: the batch is the same call for every feed at
+        // once, not a cached or substituted value.
+        const p = batched.get(key);
+        if (!p) throw new Error("feed missing from batch response");
         if (!(p.price > 0)) throw new Error("zero price");
         if (disabledFeeds.delete(key)) {
           console.log(`[ftso] ${m.symbol} recovered — market re-enabled @ $${p.price.toFixed(6)}`);
