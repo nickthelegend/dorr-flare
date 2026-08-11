@@ -4,7 +4,12 @@
  * fail soft so the UI never crashes when the operator is down.
  */
 
-const OPERATOR = process.env.NEXT_PUBLIC_OPERATOR_URL || "http://localhost:8790";
+// 8791 matches OPERATOR_PORT in .env — not 8790. They disagreed, and because the
+// chart fetched on its own the mismatch was invisible in production (where the env
+// var is set) and only bit someone cloning the repo: chart alive, every other
+// panel dead against a port nothing was listening on. Import OPERATOR_URL rather
+// than re-deriving this string; one more copy is one more chance to drift.
+const OPERATOR = process.env.NEXT_PUBLIC_OPERATOR_URL || "http://localhost:8791";
 
 export const OPERATOR_URL = OPERATOR;
 

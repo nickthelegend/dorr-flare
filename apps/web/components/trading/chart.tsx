@@ -23,6 +23,7 @@ import { cn, formatUsd } from "@/lib/core";
 import { useMarketSelection } from "@/context/market-context";
 import { useMarkets } from "@/hooks/use-operator";
 import { MarketIcon } from "./market-icon";
+import { OPERATOR_URL } from "@/lib/operator";
 
 /**
  * Candle buckets. The floor is 1 minute because that is the resolution of the
@@ -65,7 +66,7 @@ function backfillWindowSec(bucketSec: number): number {
 async function fetchBackfill(marketId: string, bucketSec: number, signal: AbortSignal): Promise<Candle[]> {
   const requested = Math.max(60, bucketSec);
   const limit = Math.ceil(backfillWindowSec(bucketSec) / requested) + 2;
-  const base = (process.env.NEXT_PUBLIC_OPERATOR_URL || "http://localhost:8791").replace(/\/$/, "");
+  const base = OPERATOR_URL.replace(/\/$/, "");
   const res = await fetch(
     `${base}/markets/${encodeURIComponent(marketId)}/candles?bucketSec=${requested}&limit=${limit}`,
     { signal, cache: "no-store" },

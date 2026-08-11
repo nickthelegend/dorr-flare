@@ -166,7 +166,29 @@ export default function TradingPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, execJob.data?.status]);
 
+  /**
+   * Synchronous in-flight guard.
+   *
+   * `busy` is derived from `phase`, and a state update does not apply until React
+   * re-renders — so a genuine double-click lands both handlers in the same tick,
+   * both see `disabled={false}`, and both reach the wallet. Measured: three rapid
+   * clicks produced three signature prompts. A ref flips now, not next render.
+   */
+  const submitting = useRef(false);
+
   const handleSubmit = async () => {
+    if (submitting.current) return;
+    submitting.current = true;
+    try {
+      await runSubmit();
+    } finally {
+      // Cleared on every path, including the validation early-returns below, so a
+      // user who fixes a rejected amount can submit again immediately.
+      submitting.current = false;
+    }
+  };
+
+  const runSubmit = async () => {
     if (!connected || !address) {
       toast.error("Connect a wallet first.");
       return;
