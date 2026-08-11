@@ -85,6 +85,18 @@
         "vitest": "^3.0.5",
       },
     },
+    "packages/tee-kit": {
+      "name": "flare-tee-kit",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@noble/curves": "1.9.7",
+        "viem": "^2.55.11",
+      },
+      "peerDependencies": {
+        "@noble/curves": "^1.9.0",
+        "viem": "^2.0.0",
+      },
+    },
     "services/operator": {
       "name": "@dorr/operator",
       "version": "0.1.0",
@@ -93,6 +105,7 @@
         "@hono/node-server": "^1.14.0",
         "@noble/curves": "1.9.7",
         "dotenv": "^16.4.7",
+        "flare-tee-kit": "workspace:*",
         "hono": "^4.7.0",
         "tlock-js": "^0.9.0",
         "viem": "^2.55.11",
@@ -634,6 +647,8 @@
     "fast-json-stable-stringify": ["fast-json-stable-stringify@2.1.0", "", {}, "sha512-lhd/wF+Lk98HZoTCtlVraHtfh5XYijIjalXck7saUtuanSDyLMxnHhSXEDJqHxD7msR8D0uCmqlkwjCV8xvwHw=="],
 
     "fdir": ["fdir@6.5.0", "", { "peerDependencies": { "picomatch": "^3 || ^4" }, "optionalPeers": ["picomatch"] }, "sha512-tIbYtZbucOs0BRGqPJkshJUYdL+SDH7dVM8gjy+ERp3WAUjLEFJE+02kanyHtwjWOnwrKYBiwAmM0p4kLJAnXg=="],
+
+    "flare-tee-kit": ["flare-tee-kit@workspace:packages/tee-kit"],
 
     "framer-motion": ["framer-motion@11.18.2", "", { "dependencies": { "motion-dom": "^11.18.1", "motion-utils": "^11.18.1", "tslib": "^2.4.0" }, "peerDependencies": { "@emotion/is-prop-valid": "*", "react": "^18.0.0 || ^19.0.0", "react-dom": "^18.0.0 || ^19.0.0" }, "optionalPeers": ["@emotion/is-prop-valid", "react", "react-dom"] }, "sha512-5F5Och7wrvtLVElIpclDT0CBzMVg3dL22B64aZwHtsIY8RB4mXICLrkajK4G9R+ieSAGcgrLeae2SeUTg2pr6w=="],
 

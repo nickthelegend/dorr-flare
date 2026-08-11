@@ -9,10 +9,13 @@ WORKDIR /app
 COPY package.json bun.lock ./
 COPY apps/web/package.json ./apps/web/package.json
 COPY packages/engine/package.json ./packages/engine/package.json
+COPY packages/tee-kit/package.json ./packages/tee-kit/package.json
 COPY services/operator/package.json ./services/operator/package.json
 COPY tools/package.json ./tools/package.json
 
-RUN bun install --frozen-lockfile || bun install
+# No `|| bun install` fallback: a failing install used to fall through, leave the
+# previous image tagged, and let `docker push` ship the stale one silently.
+RUN bun install --frozen-lockfile
 
 COPY packages ./packages
 COPY services ./services

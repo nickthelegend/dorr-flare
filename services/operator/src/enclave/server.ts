@@ -42,6 +42,7 @@ import { clearBatchUniform, type BatchOrder } from "../batch.js";
 import { readFeed } from "../ftso.js";
 import { marketById } from "../markets.js";
 import { getHardwareQuote, detectTee } from "./hardware.js";
+import { teePlane, teeSummary, logTenants } from "./multi.js";
 import { signBatchQuote, enclaveAddress, enclaveConfigured } from "../attestation.js";
 
 // ---------------------------------------------------------------------------
@@ -340,6 +341,9 @@ app.post("/clear", async (c) => {
 
 // ---------------------------------------------------------------------------
 
+app.route("/", teePlane);
+app.get("/tenants", (c) => c.json(teeSummary()));
+
 const PORT = Number(process.env.ENCLAVE_PORT || process.env.PORT || 8795);
 
 function boot() {
@@ -362,6 +366,7 @@ function boot() {
 
   serve({ fetch: app.fetch, port: PORT });
   console.log(`[enclave] confidential compute plane listening on :${PORT}`);
+  logTenants();
 }
 
 boot();

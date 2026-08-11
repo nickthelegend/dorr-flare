@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
-    "enclave": "bun run src/enclave/server.ts"
+    "enclave": "bun run src/enclave/server.ts",
+    "tee": "bun run src/enclave/multi.ts"
   },
   "dependencies": {
     "@dorr/engine": "workspace:*",
@@ -15,7 +16,8 @@
     "dotenv": "^16.4.7",
     "hono": "^4.7.0",
     "tlock-js": "^0.9.0",
-    "viem": "^2.55.11"
+    "viem": "^2.55.11",
+    "flare-tee-kit": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
