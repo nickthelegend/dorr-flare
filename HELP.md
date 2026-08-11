@@ -87,12 +87,15 @@ cast send $TEE_VERIFIER "registerTEE(bytes32,address,bytes32)" \
 
 **molfi** is already registered on Flare's native registry — `FlareTeeManager`
 `0x1a9C4A0f9D76c0b1D91d22E24E573a9b377618aE`, machine
-`0x0A752D897f7D61Ce0690EEF812027000813467bb`, status `2 = PRODUCTION`. That is the
-strongest anchor of the three: it is Flare's own registry, not a contract you wrote. If you
-only have time to do one thing, get the other two onto it as well.
+`0x0A752D897f7D61Ce0690EEF812027000813467bb`, status `2 = PRODUCTION`. That proves
+reachability, governance and availability — Flare's own providers vouching for the machine.
+It does **not** prove a hardware measurement: `SIMULATED_TEE=true` is defaulted on by
+`post-build.sh`. See [INTEGRATION.md](INTEGRATION.md) for the corrected claim.
 
-**hadal** already fetches real dstack/Confidential Space quotes in `tee/src/attest.ts` and
-its docs point at the same FCC registry.
+**hadal** fetches real dstack/Confidential Space quotes in `tee/src/attest.ts`, but its
+value-releasing path checks only `ecrecover(...) == teeAddress` — a mutable address, with
+the signing key in a file on disk. The registries it holds are used for instruction routing
+only. Do not describe hadal as registry-verified until that changes.
 
 ### 3 · Seal to the project's key
 

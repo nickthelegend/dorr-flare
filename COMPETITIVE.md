@@ -64,6 +64,13 @@ This is the bounty, so it deserves no hand-waving.
 | **Verified on-chain** | **No** | **Yes** — payload-bound, per batch |
 | Binds to the thing it protects | No — the executor is trusted for everything | Yes — the quote covers epochId ‖ membershipRoot ‖ clearingPrice ‖ orderCount |
 
+> **Before using this section, read the glass-house note.** M1 attacks Torch for
+> `EXECUTION_MODE || "mock"` defaulting to mock. A sibling submission of ours,
+> molfi, ships `SIMULATED_TEE="${SIMULATED_TEE:-true}"` in `post-build.sh:142` — the same
+> shape, also defaulted on. The criticism is still valid, but it must be made while stating
+> our own, or it reads as one rule for them and another for us. See
+> [INTEGRATION.md](INTEGRATION.md).
+
 **Neither side is complete.** Torch has the hardware and no chain-side proof. We have the
 chain-side proof and no hardware. A judge who only asks "is it a real TEE?" scores Torch
 higher. A judge who asks "what does the chain actually check?" scores us higher.

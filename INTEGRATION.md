@@ -15,15 +15,32 @@ Here is what each project actually has today, verified on-chain rather than from
 
 | | Registry | Status | Hardware |
 |---|---|---|---|
-| **molfi** | Flare `FlareTeeManager` `0x1a9C…18aE`, machine `0x0A75…67bb` | **`2` = PRODUCTION** | Real — the confidential logic is compiled into the registered image |
-| **hadal** | `ConfidentialFXRP` takes `ITeeMachineRegistry` + `ITeeExtensionRegistry` in its constructor; releases value only against `ecrecover` to a registered machine | wired | fetches real dstack / Confidential Space quotes |
+| **molfi** | Flare `FlareTeeManager` `0x1a9C…18aE`, machine `0x0A75…67bb` | **`2` = PRODUCTION** | **None.** `SIMULATED_TEE=true` in `.env`, `.env.local`, `coston2.json`, and defaulted **on** by `post-build.sh:142` |
+| **hadal** | Both registries are constructor immutables, but they appear **only** in `_sendInstruction` and `setExtensionId` — instruction routing, not the value path | not on the value path | fetches real quotes in `attest.ts`; the **signing key is a file on disk** |
 | **dorr** | bespoke `TEEAttestationVerifier` `0x578D…98aE` — payload-bound, per batch | registered | **none** — a plain dyno |
 
-molfi's `2` is not self-asserted. Flare's data providers reached the machine through its
+molfi's `2` is not self-asserted, and it is not what I said it was. **Correcting my own
+earlier claim:** I called it "real hardware, the strongest artifact of the three." It is
+neither hardware nor, on its own, an attestation.
+
+What the `2` genuinely proves: Flare's data providers reached the machine through its
 registered URL, requested `tee-attestation`, matched policy consistency against reward epoch
-5909, and obtained an availability proof. A machine that cannot be reached stalls at `1`.
-That is the network's verdict, and it is the strongest confidential-compute artifact any of
-the three has.
+5909, and obtained an availability proof. **Reachability, governance and availability are
+real and network-verified.** A machine that cannot be reached stalls at `1`.
+
+What it does not prove: a hardware measurement. `SIMULATED_TEE=true` is set in three places
+and defaulted on by `post-build.sh`. And the URL that machine registered decodes to
+`https://congressional-spin-precise-speak.trycloudflare.com` — an ephemeral Cloudflare quick
+tunnel that now returns **404**.
+
+Say this in the submission before a judge says it. It is still a strong artifact — no other
+entry has Flare's own providers vouching for their machine — but it is *"network-verified
+availability on Flare's native registry,"* not *"hardware-attested enclave."*
+
+> **Cross-project consistency risk.** `COMPETITIVE.md` attacks Torch for
+> `EXECUTION_MODE || "mock"` defaulting to mock. `post-build.sh:142` is
+> `SIMULATED_TEE="${SIMULATED_TEE:-true}"` — the same shape. Submitting both without
+> naming it hands a judge the contradiction for free.
 
 So the arrow points the other way:
 
@@ -110,15 +127,31 @@ dorr's tenant is registered on `TEEAttestationVerifier` — tx `0x4cfc42e4…`, 
 
 ## Order of work, by value
 
-1. **Add DORR and HADAL opTypes to molfi's extension**, backed by `flare-tee-kit` tenant
-   derivation. Re-register the machine once, with all three in.
-2. **Point hadal's `teeAddress` at its tenant's signer** on the shared machine. hadal's
-   contract already checks the machine registry, so this is configuration, not a rewrite.
-3. **Have dorr additionally check `FlareTeeManager`** alongside its own verifier. Its
-   payload-bound check is the strongest of the three and should stay; adding the native
-   registry means it is anchored in Flare's attestation as well as its own.
-4. Keep the Heroku plane as staging. It is the thing that works while step 1 is in flight.
+Revised after both sibling sessions reported back with verified findings. **Neither
+migration should happen before the deadline** — and that conclusion is theirs, from
+evidence, not caution.
 
-If only step 1 happens, the submission still reads: *one machine registered PRODUCTION on
-Flare's own confidential compute, serving three products, each with an independent identity
-its contract verifies.* That is a better sentence than any of the three has alone.
+0. **hadal's owner is the public anvil key `0xf39Fd6…2266`.** Anyone can call
+   `setTeeAddress` on the live contract and repoint the trust anchor right now. Every other
+   item here is theoretical until this one is fixed. `transferOwnership`, or redeploy.
+1. **Implement tenant derivation in molfi, but do not rebuild or re-register.** The property
+   worth proving — a quote for dorr does not recover to hadal's address, a bid sealed to
+   molfi opens for neither — is a pure property of the HKDF derivation. It is testable today
+   at zero risk. Vendor the ~80 lines rather than taking the dependency; it keeps the
+   in-enclave surface small.
+2. **Do not point hadal at the shared enclave.** The staging plane reports
+   `seed.source: "env"` — the host operator can read the seed that derives all three keys.
+   hadal would trade "hadal's operator holds hadal's key" for "the shared host's operator
+   holds every key": same trust class, triple the blast radius.
+3. **Make hadal's registries load-bearing.** They are currently ornamental — require
+   `teeAddress` to be a machine at `getTeeMachineStatus == PRODUCTION`, or check membership
+   via `getRandomTeeIds`. This is the highest-value change in any of the three repos, and it
+   is worth doing whether or not a machine is ever shared.
+4. **Document key provenance next to the attestation caveat.** hadal's `attest.ts` refuses
+   to fabricate a quote; the docs should equally refuse to imply the signing key is
+   enclave-held when it is a file on disk.
+
+The revised submission sentence: *three products, one derivation, each identity independently
+verified on-chain — with the machine's posture stated exactly, including what it does not
+prove.* That is weaker than what I claimed yesterday and stronger than what a judge would
+have found.
