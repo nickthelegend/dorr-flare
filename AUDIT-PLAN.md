@@ -154,3 +154,39 @@ Run against the deployed stack. Fixes were made, redeployed, and re-verified liv
 - **D3 candle gaps.** The repair sweep works — SOL went 2 gaps → 0 on re-request. FLR keeps one 180s gap because the on-chain FTSO history has no sample there. The operator **refuses to fabricate a candle the oracle never published**. My "zero gaps" criterion was wrong; inventing the bar would have been the exact violation this audit exists to catch.
 - **Cold-start degradation.** After any restart the public Coston2 RPC 429s under the 6-market fan-out: solvency errors and a market's chart shows ~4 bars until its first request finishes the lazy backfill (~10s). Self-heals. Heroku cycles dynos daily, so a judge can hit this.
 - **No hardware attestation.** `/tee/attestation` reports `available:false, mode:none`. Correct, and stated on `/verify`.
+
+---
+
+# SECOND PASS — the eleven untested items, closed
+
+No code changes were needed. Every one had working implementation; they were
+unverified, not broken. Verified against the deployed stack:
+
+| Item | How it was verified | Result |
+|---|---|---|
+| A5 reduced motion | Served HTML has **zero** `opacity:0`; `wantsMotion()` returns before `build()`, so GSAP never touches the DOM under reduce | PASS |
+| A7 CTA → /trade | Clicked the real anchor; `/trade` booted, 7 canvases, 0 failures | PASS |
+| B8 leverage | margin 1000 × 20x → **Notional 20,000.00 FXRP**, est. size = notional/mark, liq warning 5.0% = 1/20 | PASS |
+| B9 privacy toggle | Private "public sees only a hash" ⇄ Public foil "Your full order is broadcast" | PASS |
+| B18 disclosure | Real commitment via `orderCommitmentHex`; honest → `valid=true`; **tampered size → `valid=false`, REJECTED** | PASS |
+| B19 responsive 768 | 0 horizontal overflow, 0 over-wide elements, chart renders | PASS |
+| E6 cross-tenant isolation | Sealed to dorr: dorr opens it; **hadal and molfi both 400 REFUSED**; quote signer no collision | PASS |
+| F4 solvency on-chain | reserves 4.6 == liabilities 4.6, ratio 1.0 | PASS |
+| F5 settled epoch | All 4 README txs `status=1` on Coston2, incl. batch settle → `DorrBatchSettlement` | PASS |
+| B11 wallet connect | Injected EIP-1193 (chainId 114); connect cleared all 4 prompts, fired real account-scoped calls | PASS |
+| B16 collateral | Reads **Free balance 4.60 FXRP** — matches on-chain solvency reserves exactly | PASS |
+| B7 balance validation | 1000 → "Insufficient free balance (4.60 FXRP)"; 0 and empty → submit **disabled**; 2 → enabled | PASS |
+
+Re-measured whole project after: **API audit 33/33**, 103 bun, 31 Solidity,
+typecheck clean, lint clean, build clean, 0 mocks in shipped source.
+
+## What is genuinely still open
+
+1. **No hardware attestation.** `/tee/attestation` → `available:false, mode:none`.
+   Needs Phala Cloud or GCP Confidential Space — a credential that does not exist
+   in this repo. The code already fetches a real quote when the socket is present
+   and refuses to fabricate one when it is not. **This is the only item blocking 100%.**
+2. **Browser signing path not re-driven this run.** The audit provider is read-only
+   by design (it must not hold a key). The path is evidenced instead by four
+   `status=1` Coston2 transactions, `auth.test.ts`/`auth-crypto.test.ts`, and D11
+   confirming unsigned writes 401.
