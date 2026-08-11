@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# Deploy the shared enclave to a Phala dstack CVM (real Intel TDX).
+#
+# Credits burn per hour, so this pairs with teardown.sh: deploy, prove, destroy.
+# It refuses to run when a CVM already exists — two running CVMs is the
+# expensive mistake, and the whole point of this kit is not making it.
+#
+#   PHALA_API_KEY=… HEROKU_API_KEY=… ENCLAVE_IMAGE=docker.io/you/dorr-enclave:1 ./deploy.sh
+set -euo pipefail
+
+API=https://cloud-api.phala.network/api/v1
+: "${PHALA_API_KEY:?set PHALA_API_KEY}"
+: "${ENCLAVE_IMAGE:?set ENCLAVE_IMAGE (must be PUBLIC — the CVM pulls it with no creds)}"
+: "${HEROKU_API_KEY:?set HEROKU_API_KEY (secrets are read from the live app, never git)}"
+
+export CVM_NAME="${CVM_NAME:-dorr-enclave}"
+export TEEPOD_ID="${TEEPOD_ID:-18}"       # 18 = prod9, 26 = prod5 (both US-WEST-1)
+export VCPU="${VCPU:-1}" MEM="${MEM:-2048}" DISK="${DISK:-20}"   # ≈ tdx.small, $0.06/hr
+
+say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
+
+say "0 · refuse to double-spend"
+n=$(curl -fsS -H "X-API-Key: $PHALA_API_KEY" "$API/cvms" |
+    python3 -c 'import sys,json; print(len(json.load(sys.stdin)))')
+if [ "$n" != "0" ]; then
+  echo "  $n CVM(s) already running and billing. Run ./teardown.sh first."
+  exit 1
+fi
+echo "  none running — safe to create one"
+
+say "1 · pull live secrets from Heroku"
+cfg=$(curl -fsS "https://api.heroku.com/apps/dorr-enclave/config-vars" \
+  -H "Accept: application/vnd.heroku+json; version=3" \
+  -H "Authorization: Bearer $HEROKU_API_KEY")
+get() { printf '%s' "$cfg" | python3 -c "import sys,json;print(json.load(sys.stdin).get('$1',''))"; }
+
+# TEE_MASTER_SEED must carry over verbatim. Every tenant address derives from it,
+# and dorr's is registered on TEEAttestationVerifier — a fresh seed silently
+# invalidates that registration and the chain stops recognising our quotes.
+export TEE_MASTER_SEED; TEE_MASTER_SEED=$(get TEE_MASTER_SEED)
+[ -n "$TEE_MASTER_SEED" ] || { echo "TEE_MASTER_SEED missing — refusing to deploy"; exit 1; }
+echo "  seed carried over (len ${#TEE_MASTER_SEED}) — tenant addresses unchanged"
+
+export TEE_PROJECTS TEE_MEASUREMENT TEE_ENCLAVE_KEY TEE_ID FLARE_RPC_URL
+export DORR_VAULT_ADDRESS DORR_SETTLEMENT_ADDRESS DORR_TEE_VERIFIER_ADDRESS
+TEE_PROJECTS=$(get TEE_PROJECTS); TEE_MEASUREMENT=$(get TEE_MEASUREMENT)
+TEE_ENCLAVE_KEY=$(get TEE_ENCLAVE_KEY); TEE_ID=$(get TEE_ID)
+FLARE_RPC_URL=$(get FLARE_RPC_URL)
+DORR_VAULT_ADDRESS=$(get DORR_VAULT_ADDRESS)
+DORR_SETTLEMENT_ADDRESS=$(get DORR_SETTLEMENT_ADDRESS)
+DORR_TEE_VERIFIER_ADDRESS=$(get DORR_TEE_VERIFIER_ADDRESS)
+echo "  tenants: $TEE_PROJECTS"
+
+say "2 · render compose"
+envsubst < "$(dirname "$0")/docker-compose.yml" > /tmp/dorr-compose.yml
+echo "  $(wc -l < /tmp/dorr-compose.yml) lines"
+
+say "3 · create the CVM — billing starts here"
+python3 - > /tmp/dorr-payload.json <<'PY'
+import json, os
+print(json.dumps({
+    "name": os.environ["CVM_NAME"],
+    "compose_manifest": {
+        "name": os.environ["CVM_NAME"],
+        "docker_compose_file": open("/tmp/dorr-compose.yml").read(),
+        "features": ["kms", "tproxy-net"],
+        "public_logs": True,
+        "public_sysinfo": True,
+    },
+    "vcpu": int(os.environ["VCPU"]),
+    "memory": int(os.environ["MEM"]),
+    "disk_size": int(os.environ["DISK"]),
+    "teepod_id": int(os.environ["TEEPOD_ID"]),
+    "image": "dstack-0.3.5",
+}))
+PY
+
+curl -fsS -X POST "$API/cvms/from_cvm_configuration" \
+  -H "X-API-Key: $PHALA_API_KEY" -H "Content-Type: application/json" \
+  --data @/tmp/dorr-payload.json | tee /tmp/phala-cvm.json |
+  python3 -c 'import sys,json; d=json.load(sys.stdin); print("  app_id:", d.get("app_id") or d.get("hosted",{}).get("app_id")); print("  status:", d.get("status"))'
+
+say "4 · next"
+echo "  wait ~2 min, then ./verify.sh   (proves hardware + all three tenants)"
+echo "  then                ./teardown.sh (stops the meter)"

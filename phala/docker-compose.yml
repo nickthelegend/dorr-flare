@@ -1,0 +1,37 @@
+# dstack workload for the shared confidential-compute plane.
+#
+# One container, three tenants (dorr, hadal, molfi). Each gets its own signing
+# and sealing key derived from TEE_MASTER_SEED, so a quote issued for one does
+# not recover to the address another registered on-chain.
+#
+# Secrets are NOT here. dstack injects them as encrypted env at launch (see
+# deploy.sh) so they never enter the image, this file, or git.
+services:
+  enclave:
+    # Must be a PUBLIC image — the CVM pulls it itself and has no registry creds.
+    image: ${ENCLAVE_IMAGE}
+    ports:
+      - "8795:8795"
+    environment:
+      DORR_ROLE: enclave
+      PORT: "8795"
+      ENCLAVE_PORT: "8795"
+      NODE_ENV: production
+      TEE_PROJECTS: ${TEE_PROJECTS}
+      TEE_MASTER_SEED: ${TEE_MASTER_SEED}
+      TEE_MEASUREMENT: ${TEE_MEASUREMENT}
+      TEE_ENCLAVE_KEY: ${TEE_ENCLAVE_KEY}
+      TEE_ID: ${TEE_ID}
+      FLARE_RPC_URL: ${FLARE_RPC_URL}
+      FLARE_CHAIN_ID: "114"
+      DORR_VAULT_ADDRESS: ${DORR_VAULT_ADDRESS}
+      DORR_SETTLEMENT_ADDRESS: ${DORR_SETTLEMENT_ADDRESS}
+      DORR_TEE_VERIFIER_ADDRESS: ${DORR_TEE_VERIFIER_ADDRESS}
+    volumes:
+      # The dstack guest agent socket. This is the whole point of the exercise:
+      # with it mounted, hardware.ts stops reporting available:false and starts
+      # returning a real Intel TDX quote with report_data bound to the payload
+      # hash. Without it the same image runs fine and honestly says there is no
+      # hardware — which is exactly what it does on Heroku today.
+      - /var/run/dstack.sock:/var/run/dstack.sock
+    restart: always
