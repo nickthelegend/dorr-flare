@@ -28,6 +28,7 @@ type FlareInfo = {
   batchesSettled: number;
 };
 type Attestation = {
+  keyCustody?: { signsForOperator: boolean; note: string };
   signer: string | null;
   teeId: string;
   measurement: string;
@@ -126,6 +127,12 @@ export default function VerifyClient() {
                   ))}
                   {!att && <li className="text-white/30">— loading from the enclave…</li>}
                 </ul>
+              </li>
+              <li>
+                <span className="text-white">The key the matching engine cannot reach.</span> The
+                operator delegates batch signing to the enclave and holds no attestation key, so it
+                cannot forge a quote even for itself. Delegating is safe because the chain checks the
+                payload: a signature over any batch other than the one being settled is worthless.
               </li>
               <li>
                 <span className="text-white">Your collateral.</span> DorrVault pays out only to the
@@ -248,6 +255,17 @@ export default function VerifyClient() {
           </Row>
           <Row label="Verified by">
             <Addr a={att?.onChainVerification.contract} />
+          </Row>
+          <Row label="Signs for the operator">
+            {att?.keyCustody ? (
+              <span className={att.keyCustody.signsForOperator ? "text-emerald-400" : "text-white/50"}>
+                {att.keyCustody.signsForOperator
+                  ? "yes — the operator holds no attestation key"
+                  : "no — single-process mode"}
+              </span>
+            ) : (
+              "…"
+            )}
           </Row>
         </dl>
 

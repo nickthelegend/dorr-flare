@@ -133,6 +133,13 @@ app.get("/attestation", async (c) => {
     verifierContract: env.flare.teeVerifier || null,
     chainId: env.flare.chainId,
     hardwareAttestation: hw,
+    keyCustody: {
+      signsForOperator: true,
+      note:
+        "The operator delegates batch signing to this process over /sign-batch when ENCLAVE_URL is set, " +
+        "so the matching engine holds no attestation key and cannot forge a quote. The chain still checks " +
+        "the quote against the batch it is settling, so a signature over any other batch is worthless.",
+    },
     onChainVerification: {
       contract: env.flare.teeVerifier || null,
       checks: [
@@ -146,6 +153,46 @@ app.get("/attestation", async (c) => {
         "rather than trusted by the operator.",
     },
   });
+});
+
+/**
+ * Sign a quote for a batch the matching engine just cleared.
+ *
+ * This exists so the operator does not have to hold the attestation key. It signs
+ * whatever payload it is handed — which is safe precisely because the payload is
+ * the thing the chain checks: `DorrBatchSettlement` recomputes
+ * `keccak256(epochId, membershipRoot, clearingPrice, orderCount)` from the batch
+ * it is actually settling and rejects a quote over anything else. A forged
+ * request therefore buys an attacker a signature over a batch that will not
+ * settle.
+ */
+app.post("/sign-batch", async (c) => {
+  const b = await c.req.json().catch(() => ({}));
+  const epochId = String(b.epochId || "");
+  const membershipRoot = String(b.membershipRoot || "");
+  if (!/^0x[0-9a-fA-F]{64}$/.test(epochId)) return c.json({ error: "epochId must be bytes32" }, 400);
+  if (!/^0x[0-9a-fA-F]{64}$/.test(membershipRoot)) return c.json({ error: "membershipRoot must be bytes32" }, 400);
+  let clearingPrice: bigint;
+  try {
+    clearingPrice = BigInt(b.clearingPrice);
+  } catch {
+    return c.json({ error: "clearingPrice must be an integer string (1e6)" }, 400);
+  }
+  const orderCount = Number(b.orderCount);
+  if (!Number.isInteger(orderCount) || orderCount < 0) return c.json({ error: "orderCount must be a non-negative integer" }, 400);
+
+  try {
+    const quote = await signBatchQuote({
+      epochId: epochId as Hex,
+      membershipRoot: membershipRoot as Hex,
+      clearingPrice,
+      orderCount,
+      ...(b.nonce != null ? { nonce: BigInt(b.nonce) } : {}),
+    });
+    return c.json({ ...quote, nonce: quote.nonce.toString() });
+  } catch (e) {
+    return c.json({ error: String(e instanceof Error ? e.message : e).slice(0, 200) }, 500);
+  }
 });
 
 /** The key clients seal their orders to. */

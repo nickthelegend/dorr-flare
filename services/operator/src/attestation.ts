@@ -63,7 +63,22 @@ export function attestationDigest(p: {
   );
 }
 
+/**
+ * Where the attestation key lives.
+ *
+ * With `ENCLAVE_URL` set, the operator holds no signing key at all — it asks the
+ * enclave for a quote over HTTP and cannot forge one if it wanted to. That is
+ * the deployment shape: the whole point of an enclave is undermined if the
+ * process it is supposed to be isolated from is holding the same key.
+ *
+ * Without it, the key is local. That is the single-process dev mode, and
+ * `/attestation` says which of the two is running rather than letting the
+ * stronger claim be assumed.
+ */
+export const enclaveUrl = (): string | null => process.env.ENCLAVE_URL?.replace(/\/$/, "") || null;
+
 export function enclaveConfigured(): boolean {
+  if (enclaveUrl()) return true;
   return Boolean(env.flare.teeKey && env.flare.teeId && env.flare.teeMeasurement);
 }
 
@@ -71,6 +86,30 @@ export function enclaveConfigured(): boolean {
 export function enclaveAddress(): Hex {
   if (!env.flare.teeKey) throw new Error("TEE_ENCLAVE_KEY not configured");
   return privateKeyToAccount(env.flare.teeKey as Hex).address;
+}
+
+/**
+ * The enclave's signing address, wherever the key actually lives.
+ *
+ * With signing delegated, the operator has no key to derive an address from, so
+ * it asks the enclave. Returns null instead of throwing: this is descriptive
+ * telemetry on `/flare/info`, and an unreachable enclave should not take a whole
+ * status endpoint down with it — which is exactly what `enclaveAddress()`
+ * throwing did the moment the operator stopped holding the key.
+ */
+let _remoteSigner: { at: number; addr: Hex | null } | null = null;
+export async function enclaveSigner(): Promise<Hex | null> {
+  const remote = enclaveUrl();
+  if (!remote) return env.flare.teeKey ? enclaveAddress() : null;
+  if (_remoteSigner && Date.now() - _remoteSigner.at < 60_000) return _remoteSigner.addr;
+  try {
+    const r = await fetch(`${remote}/attestation`);
+    const j = (await r.json()) as { signer?: Hex };
+    _remoteSigner = { at: Date.now(), addr: j.signer ?? null };
+  } catch {
+    _remoteSigner = { at: Date.now(), addr: null };
+  }
+  return _remoteSigner.addr;
 }
 
 /**
@@ -84,8 +123,35 @@ export async function signBatchQuote(p: {
   orderCount: number;
   nonce?: bigint;
 }): Promise<BatchQuote> {
+  const remote = enclaveUrl();
+  if (remote) {
+    // Delegate to the enclave. It returns the quote and keeps the key.
+    const res = await fetch(`${remote}/sign-batch`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        epochId: p.epochId,
+        membershipRoot: p.membershipRoot,
+        clearingPrice: p.clearingPrice.toString(),
+        orderCount: p.orderCount,
+        ...(p.nonce != null ? { nonce: p.nonce.toString() } : {}),
+      }),
+    });
+    if (!res.ok) {
+      throw new Error(`enclave refused to sign the batch: HTTP ${res.status} ${(await res.text()).slice(0, 160)}`);
+    }
+    const q = (await res.json()) as { teeId: Hex; nonce: string; payloadHash: Hex; signature: Hex; attestation: Hex; signer: Hex };
+    // Recompute the payload hash locally: the operator must never accept a quote
+    // over a batch other than the one it just cleared, even from its own enclave.
+    const expected = batchPayloadHash(p);
+    if (q.payloadHash.toLowerCase() !== expected.toLowerCase()) {
+      throw new Error(`enclave signed the wrong payload (got ${q.payloadHash}, expected ${expected})`);
+    }
+    return { ...q, nonce: BigInt(q.nonce) };
+  }
+
   if (!enclaveConfigured()) {
-    throw new Error("enclave not configured (TEE_ENCLAVE_KEY / TEE_ID / TEE_MEASUREMENT)");
+    throw new Error("enclave not configured (TEE_ENCLAVE_KEY / TEE_ID / TEE_MEASUREMENT, or ENCLAVE_URL)");
   }
   const account = privateKeyToAccount(env.flare.teeKey as Hex);
   const teeId = env.flare.teeId as Hex;

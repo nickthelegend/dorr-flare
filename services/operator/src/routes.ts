@@ -16,7 +16,7 @@ import {
   flareConfigured, vaultSolvency, fxrpInfo, vaultAccount, epochCount,
   getBatchOnChain, explorerAddress, explorerTx, relayerBalance, syncLockedMargin,
 } from "./flare.js";
-import { enclaveConfigured, enclaveAddress } from "./attestation.js";
+import { enclaveConfigured, enclaveSigner, enclaveUrl } from "./attestation.js";
 import { resolveFtsoAddress, readFeedHistory } from "./ftso.js";
 import { buildDisclosure, verifyDisclosure } from "./disclosure.js";
 import { createJob, jobStep, completeJob, failJob } from "./jobs.js";
@@ -44,6 +44,42 @@ function checkAuth(
   const res = verifyAuth(action, params, body.auth as AuthEnvelope | undefined, expectedSigner);
   return res.ok ? null : res.error;
 }
+
+/**
+ * A tiny TTL cache for the read-only chain summaries the UI polls.
+ *
+ * `/flare/info` fans five `eth_call`s out at once and both the landing page and
+ * /verify hit it on every load. Against a public RPC that rate-limits, that is a
+ * 500 waiting to happen — and none of the data is per-request: the contract
+ * addresses never move and solvency changes on the order of minutes. One read
+ * shared across a few seconds of traffic is both gentler and more honest about
+ * what the number actually is.
+ */
+const chainCache = new Map<string, { at: number; value: unknown }>();
+
+async function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
+  const hit = chainCache.get(key);
+  if (hit && Date.now() - hit.at < ttlMs) return hit.value as T;
+  try {
+    const value = await load();
+    chainCache.set(key, { at: Date.now(), value });
+    return value;
+  } catch (e) {
+    // Serve the last good read rather than a 500. A contract address that was
+    // correct twenty seconds ago is still correct, and a status page that goes
+    // blank every time a shared public RPC hiccups tells a reviewer less than a
+    // slightly stale one. `staleFor` below says how old it is, so nothing here
+    // is passed off as fresher than it is.
+    if (hit) return hit.value as T;
+    throw e;
+  }
+}
+
+/** Seconds since a cached chain summary was last successfully refreshed. */
+const staleFor = (key: string): number | null => {
+  const hit = chainCache.get(key);
+  return hit ? Math.round((Date.now() - hit.at) / 1000) : null;
+};
 
 // ─── system ──────────────────────────────────────────────────────────────────
 app.get("/health", async (c) => {
@@ -201,7 +237,10 @@ app.get("/markets/:id/candles", async (c) => {
 app.get("/vault/info", async (c) => {
   if (flareConfigured()) {
     try {
-      const [fx, sol] = await Promise.all([fxrpInfo(), vaultSolvency()]);
+      const { fx, sol } = await cached("vault/info", 15_000, async () => ({
+        fx: await fxrpInfo(),
+        sol: await vaultSolvency(),
+      }));
       return c.json({
         chain: "flare-coston2",
         chainId: env.flare.chainId,
@@ -257,14 +296,28 @@ app.post("/faucet", (c) =>
  *
  * Returns the change in balance (positive when collateral arrived).
  */
+/** Addresses whose collateral we have successfully read from the vault at least once. */
+const everReconciled = new Set<string>();
+
 async function reconcileVault(address: string): Promise<number> {
   if (!flareConfigured()) return 0;
   const acct = account(address);
   let onChain: number;
   try {
     onChain = (await vaultAccount(address)).balance;
-  } catch {
-    return 0; // vault unreadable — keep the last known balance rather than blanking it
+    everReconciled.add(address);
+  } catch (e) {
+    // A failed read on an account we have seen before is survivable: the stored
+    // balance is genuinely the last known one, so keep it.
+    if (everReconciled.has(address)) return 0;
+    // On an account we have NEVER read, the stored zero is not "last known", it
+    // is "never known" — and asserting it tells a funded trader they are broke.
+    // A fresh process hit exactly that: one 429 during the first reconcile and
+    // the order came back "insufficient free margin: 0.00 FXRP". Surface it as
+    // the transient upstream failure it is so the caller can retry.
+    throw new Error(
+      `collateral temporarily unreadable for ${address.slice(0, 10)}… — ${String(e).slice(0, 100)}`,
+    );
   }
   const before = acct.balance;
   acct.balance = Math.max(0, onChain + (acct.pnlCum ?? 0));
@@ -385,7 +438,11 @@ app.post("/orders/commit", async (c) => {
   if (authErr) return bad(c, authErr, 401);
   // Pick up collateral the trader deposited on-chain before judging free margin,
   // so a fresh wallet with FXRP in the vault isn't told it has none.
-  await reconcileVault(p.address);
+  try {
+    await reconcileVault(p.address);
+  } catch (e) {
+    return bad(c, String(e instanceof Error ? e.message : e), 503);
+  }
   let committed;
   try {
     committed = commitOrder(p);
@@ -598,7 +655,10 @@ app.get("/config", async (c) => {
     return c.json(cfg);
   }
   try {
-    const [fx, sol] = await Promise.all([fxrpInfo(), vaultSolvency()]);
+    const { fx, sol } = await cached("config/flare", 15_000, async () => ({
+      fx: await fxrpInfo(),
+      sol: await vaultSolvency(),
+    }));
     cfg.flare = {
       vaultAddress: sol.vaultAddress,
       settlementAddress: env.flare.settlement,
@@ -771,7 +831,13 @@ app.post("/orders/seal", async (c) => {
   };
   const authErr = checkAuth("seal", { commitment: p.commitment, targetRound: p.targetRound }, body, p.address);
   if (authErr) return bad(c, authErr, 401);
-  await reconcileVault(p.address);
+  // Pick up collateral the trader deposited on-chain before judging free margin,
+  // so a fresh wallet with FXRP in the vault isn't told it has none.
+  try {
+    await reconcileVault(p.address);
+  } catch (e) {
+    return bad(c, String(e instanceof Error ? e.message : e), 503);
+  }
   let so;
   try {
     so = addSealedOrder(p);
@@ -828,13 +894,15 @@ app.get("/batch/epoch", async (c) => {
 app.get("/flare/info", async (c) => {
   if (!flareConfigured()) return bad(c, "Flare contracts not configured", 503);
   try {
-    const [fx, sol, ftso, epochs, relayer] = await Promise.all([
-      fxrpInfo(),
-      vaultSolvency(),
-      resolveFtsoAddress(),
-      epochCount(),
-      relayerBalance(),
-    ]);
+    // Sequential, not Promise.all: five simultaneous eth_calls is exactly the
+    // burst the public RPC answers with 429.
+    const { fx, sol, ftso, epochs, relayer } = await cached("flare/info", 15_000, async () => ({
+      fx: await fxrpInfo(),
+      sol: await vaultSolvency(),
+      ftso: await resolveFtsoAddress(),
+      epochs: await epochCount(),
+      relayer: await relayerBalance(),
+    }));
     return c.json({
       network: "flare-coston2",
       chainId: env.flare.chainId,
@@ -848,10 +916,19 @@ app.get("/flare/info", async (c) => {
       collateral: { symbol: fx.symbol, address: fx.address, decimals: fx.decimals, totalSupply: fx.totalSupply },
       solvency: { solvent: sol.solvent, reservesFxrp: sol.reservesFxrp, liabilitiesFxrp: sol.liabilitiesFxrp },
       enclave: enclaveConfigured()
-        ? { configured: true, signer: enclaveAddress(), teeId: env.flare.teeId, measurement: env.flare.teeMeasurement }
+        ? {
+            configured: true,
+            signer: await enclaveSigner(),
+            teeId: env.flare.teeId,
+            measurement: env.flare.teeMeasurement,
+            // Stated plainly: with this set the matching engine holds no
+            // attestation key and cannot sign a batch quote itself.
+            delegatedTo: enclaveUrl(),
+          }
         : { configured: false },
       batchesSettled: epochs,
       relayer,
+      readAgeSec: staleFor("flare/info"),
       explorerUrls: {
         vault: explorerAddress(sol.vaultAddress),
         settlement: explorerAddress(env.flare.settlement),
@@ -981,7 +1058,11 @@ app.get("/stats", (c) => {
 app.get("/ops/balances", async (c) => {
   if (!flareConfigured()) return bad(c, "flare not configured", 503);
   try {
-    const [relayer, fx, sol] = await Promise.all([relayerBalance(), fxrpInfo(), vaultSolvency()]);
+    const { relayer, fx, sol } = await cached("ops/balances", 15_000, async () => ({
+      relayer: await relayerBalance(),
+      fx: await fxrpInfo(),
+      sol: await vaultSolvency(),
+    }));
     return c.json({
       chain: "flare-coston2",
       relayer: { address: relayer.address, c2flr: relayer.c2flr },

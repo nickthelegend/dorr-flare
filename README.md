@@ -8,7 +8,7 @@ Private order flow on **Flare** — your order is a commitment the operator itse
 `FLR · XRP · BTC · ETH · SOL · DOGE` · up to 20× · **FXRP**-margined · settled on Flare Coston2
 
 **Live on Coston2 testnet → [dorr-flare.vercel.app](https://dorr-flare.vercel.app)**
-[Trade](https://dorr-flare.vercel.app/trade) · [Verify](https://dorr-flare.vercel.app/verify) · [operator](https://operator-production-638b.up.railway.app/health) · [enclave](https://enclave-production-66e4.up.railway.app/attestation)
+[Trade](https://dorr-flare.vercel.app/trade) · [Verify](https://dorr-flare.vercel.app/verify) · [operator](https://dorr-operator-9449c5bb5086.herokuapp.com/health) · [enclave](https://dorr-enclave-f7b366d50e22.herokuapp.com/attestation)
 
 Grab free C2FLR and FTestXRP from the [Flare faucet](https://faucet.flare.network/coston2), deposit, and seal an order. Costs nothing.
 
@@ -28,6 +28,14 @@ recovers the signature, checks the `teeId` is registered and the measurement mat
 is a different product from an enclave the chain checks — see
 [/verify](https://dorr-flare.vercel.app/verify), which publishes what is *not* proven beside
 what is.
+
+**Checkable right now.** Epoch 6 settled on Coston2 in tx
+[`0xaf46e37d…`](https://coston2-explorer.flare.network/tx/0xaf46e37d9478b6188bae9f0d51b7a31bf308cc6aceb9ab6ef80de308ae5cd9ce)
+(block 33,923,759). The clearing price in that transaction was signed by the enclave and
+verified by `TEEAttestationVerifier` before `DorrBatchSettlement` would accept it — and the
+operator that submitted it **holds no attestation key at all**: it asks the enclave over
+`/sign-batch` and cannot forge a quote. `heroku config -a dorr-operator` lists exactly one
+key, the relayer's, which only pays gas.
 
 **Target user:** leveraged perp traders whose order flow is large enough to be worth front-running — the people currently paying a timing tax on every fill — plus the market makers quoting against them, who price that toxicity into spreads.
 

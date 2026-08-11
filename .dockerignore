@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+.next
+apps/web/.next
+.git
+demo-take
+contracts/out
+contracts/cache
+contracts/lib
+services/operator/data
+*.mp4
+*.webm
+.env

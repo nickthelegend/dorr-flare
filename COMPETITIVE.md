@@ -100,10 +100,33 @@ Ordered by how much a judge's score moves per hour of work.
 
 | # | Move | Closes | Status |
 |---|---|---|---|
-| P1 | **Fetch a real hardware quote** (dstack + Confidential Space) in the enclave and bind its measurement into the on-chain-verified attestation | T1, M3 — and puts us ahead, because theirs is never fetched | |
-| P2 | **Deploy publicly** — web + operator + enclave on real URLs | T2 | |
-| P3 | **A `/verify` page** stating what is proven, what is not, and the exact on-chain checks | T6, T7 | |
-| P4 | **Say the privacy thesis louder**, and name the liquidity trade-off ourselves | D1, honesty | |
+| P1 | **Fetch a real hardware quote** (dstack + Confidential Space) in the enclave, with `report_data` = the batch payload hash | T1, M3 — and puts us ahead, because theirs is never fetched | **Done, unverified on hardware.** Degrades honestly to `available:false`; lighting it up needs a Phala Cloud account |
+| P2 | **Deploy publicly** — web + operator + enclave on real URLs | T2 | **Done.** [dorr-flare.vercel.app](https://dorr-flare.vercel.app), operator + enclave on Heroku |
+| P3 | **A `/verify` page** stating what is proven, what is not, and the exact on-chain checks | T6, T7 | **Done.** Reads contracts from the operator and attestation from the enclave |
+| P4 | **Say the privacy thesis louder**, and name the liquidity trade-off ourselves | D1, honesty | **Done** — the "not proven" column names the vAMM depth limit outright |
+| P5 | **Take the attestation key off the operator entirely** | Beats T1 on Torch's own terms | **Done.** The operator delegates to the enclave over `/sign-batch` and holds only the gas key |
+
+### P5 — the move that settles the TEE argument
+
+Torch's strongest claim is that the executor key is generated in the enclave and never
+exported. Ours was weaker than it sounded: the operator process held `TEE_ENCLAVE_KEY`
+itself, so the isolation was nominal — the thing the enclave was supposed to be isolated
+*from* could sign its own quotes.
+
+That is now closed. The operator asks the enclave for a quote over `/sign-batch` and holds
+no attestation key; `heroku config -a dorr-operator` shows one key, the relayer's, which
+only pays gas. Delegating is safe precisely because the chain checks the payload:
+`DorrBatchSettlement` recomputes `keccak256(epochId, membershipRoot, clearingPrice,
+orderCount)` from the batch it is settling and rejects a quote over anything else, so a
+forged request buys an attacker a signature over a batch that will not settle.
+
+Proven end to end on the deployed stack: epoch 6, tx
+[`0xaf46e37d…`](https://coston2-explorer.flare.network/tx/0xaf46e37d9478b6188bae9f0d51b7a31bf308cc6aceb9ab6ef80de308ae5cd9ce).
+
+**Net position on Confidential Compute:** Torch has hardware with no on-chain check and a
+quote that is never fetched. dorr has an on-chain check, a quote bound to the specific
+batch, and a key the matching engine cannot reach — and no hardware. Of the two gaps, ours
+is a deployment target away; theirs is a contract rewrite.
 
 FDC (T4) is deliberately *not* on this list: attesting an exchange fill is meaningful for
 Torch because they have an exchange. We have no external venue, so an FDC round trip would
