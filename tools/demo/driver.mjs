@@ -350,8 +350,13 @@ const takes = {
     }
 
     await line(page, "commit", { signing: true });
-    await signingOverlay(page, true, "Signing Transaction");
+    // Click FIRST, then raise the overlay. It is `position:fixed; inset:0`, so
+    // raising it first covers the very button we are about to press and
+    // Playwright waits out its 30s actionability timeout on an element that can
+    // never be reached. It also reads better: the card belongs over a pending
+    // transaction, not over the decision to send one.
     await clickAt(page, submitSel);
+    await signingOverlay(page, true, "Signing Transaction");
     // Real state, not a toast: the commitment has to reach the public feed.
     // Real state: the commitment has to reach the public feed. A toast is not
     // evidence and a spinner leaving is not evidence.
@@ -468,6 +473,14 @@ async function main() {
   page.on("pageerror", (e) => console.error("PAGEERROR:", String(e).slice(0, 300)));
   page.on("console", (m) => {
     if (m.type() === "error") console.error("CONSOLE:", m.text().slice(0, 300));
+  });
+
+  // Capture the crash with its stack. It only reproduces with the full run's
+  // accumulated state, so a listener has to be live for the whole take rather
+  // than bolted onto a smaller repro.
+  page.on("pageerror", (e) => {
+    console.error(`PAGEERROR ${e.message}`);
+    if (e.stack) console.error(e.stack.split("\n").slice(0, 6).join("\n"));
   });
 
   const errCount = await preflight(page, ctx);
