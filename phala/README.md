@@ -1,7 +1,8 @@
 # Phala deploy kit — deploying the enclave to real Intel TDX
 
-> **Status: the host is TDX, the quote is not yet obtained.** See the run log at the
-> bottom before repeating any hardware claim from this file.
+> **Status: working.** `available: true`, 5010-byte Intel TDX quote, `report_data` bound to
+> the payload hash. Evidence in [evidence/](evidence/). The RPC is `/GetQuote` at the socket
+> root — see the run log at the bottom for why that took four deploys to find.
 
 One `tdx.small` CVM (~$0.06/hr) runs the shared enclave. dorr, hadal and molfi
 all get hardware attestation from it, because it is the **same image already

@@ -103,10 +103,15 @@ export async function getHardwareQuote(payloadHash?: Hex): Promise<HardwareQuote
     // very different problems and the note has to tell them apart.
     const attempts: string[] = [];
     for (const rpc of [
-      "/prpc/GetQuote?json",           // dstack 0.5.x
-      "/prpc/Worker.GetQuote?json",
-      "/prpc/Dstack.GetQuote?json",    // 0.4.x
-      "/prpc/Tappd.TdxQuote?json",     // 0.3.x tappd
+      // Measured against a live dstack 0.5.9 guest agent, not guessed. The
+      // router answers `{"error":"Service not found: X"}` for a single path
+      // segment and plain HTML 404 for anything with a second one — so there is
+      // no `/prpc` prefix and no `Service.Method` form. It is just `/GetQuote`.
+      // Four earlier spellings cost two deploys before the socket was asked
+      // directly; see /tee/socket-probe.
+      "/GetQuote",
+      "/prpc/GetQuote?json",           // older layouts, kept as fallbacks
+      "/prpc/Tappd.TdxQuote?json",
     ]) {
       try {
         const raw = await socketPost(socket, rpc, { report_data: reportData });
@@ -176,3 +181,70 @@ export async function getHardwareQuote(payloadHash?: Hex): Promise<HardwareQuote
       "checked by TEEAttestationVerifier, but there is no hardware measurement behind it here.",
   };
 }
+
+/**
+ * Ask the guest-agent socket what it actually serves.
+ *
+ * Diagnostic only, and it exists because guessing cost a deploy: four plausible
+ * `/prpc/*` spellings all came back as HTML 404s on a live dstack 0.5.9 CVM,
+ * which says the socket was not serving that API at all rather than that the
+ * method name was wrong. Those are different faults and you cannot tell them
+ * apart from outside the machine. Returns status + body rather than throwing, so
+ * a 404 is data.
+ */
+export async function probeSocket(
+  path: string,
+  method: "GET" | "POST" = "POST",
+  body: unknown = {},
+): Promise<{ path: string; method: string; status: number | null; body: string; error?: string }> {
+  const socketPath = existsSync(DSTACK_SOCKET) ? DSTACK_SOCKET : TAPPD_SOCKET;
+  return new Promise((resolve) => {
+    const payload = JSON.stringify(body);
+    const req = http.request(
+      {
+        socketPath,
+        path,
+        method,
+        timeout: 4000,
+        headers:
+          method === "POST"
+            ? { "content-type": "application/json", "content-length": Buffer.byteLength(payload) }
+            : {},
+      },
+      (res) => {
+        let data = "";
+        res.on("data", (c) => (data += c));
+        res.on("end", () => resolve({ path, method, status: res.statusCode ?? null, body: data.slice(0, 400) }));
+      },
+    );
+    req.on("timeout", () => { req.destroy(); resolve({ path, method, status: null, body: "", error: "timeout" }); });
+    req.on("error", (e) => resolve({ path, method, status: null, body: "", error: String(e).slice(0, 120) }));
+    if (method === "POST") req.write(payload);
+    req.end();
+  });
+}
+
+/** Every socket path worth asking about, cheapest-first. */
+export const PROBE_PATHS: Array<[string, "GET" | "POST"]> = [
+  // Measured on a live 0.5.9 host: `/prpc` and `/quote` both answered
+  // `{"error":"Service not found: …"}` while every `/prpc/X` returned HTML.
+  // The router therefore reads the FIRST path segment as the service name, so
+  // the shape is /<Service>/<Method> at the root.
+  ["/Tappd/TdxQuote", "POST"],
+  ["/Dstack/GetQuote", "POST"],
+  ["/Worker/GetQuote", "POST"],
+  ["/Tappd/Info", "POST"],
+  ["/Dstack/Info", "POST"],
+  ["/Worker/Info", "POST"],
+  ["/Info/Info", "POST"],
+  ["/", "GET"],
+  ["/prpc", "GET"],
+  ["/prpc/Info", "POST"],
+  ["/prpc/Info?json", "POST"],
+  ["/prpc/GetQuote?json", "POST"],
+  ["/prpc/Worker.Info?json", "POST"],
+  ["/prpc/Tappd.Info?json", "POST"],
+  ["/prpc/Dstack.Info?json", "POST"],
+  ["/api/v1/quote", "POST"],
+  ["/quote", "POST"],
+];

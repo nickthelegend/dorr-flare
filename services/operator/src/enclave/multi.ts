@@ -33,6 +33,8 @@ import {
   detectTee,
   openInEnclave,
   decodeSealed,
+  probeSocket,
+  PROBE_PATHS,
   type Tenant,
 } from "flare-tee-kit";
 
@@ -191,6 +193,29 @@ app.post("/t/:project/sign", async (c) => {
   // attests to this exact request, not merely to being switched on.
   const hardware = await getHardwareQuote(payloadHash as Hex);
   return c.json({ ...quote, nonce: quote.nonce.toString(), projectId: t.projectId, hardwareAttestation: hardware });
+});
+
+/**
+ * What the guest-agent socket actually serves.
+ *
+ * Diagnostic, and deliberately shipped rather than run by hand: the socket only
+ * exists inside the CVM, so the machine has to answer this question itself. Four
+ * guessed `/prpc/*` names all returned HTML 404s on a live 0.5.9 host, which is a
+ * different fault from a wrong method name and is not distinguishable from
+ * outside. Read-only — it posts empty bodies and returns whatever comes back.
+ */
+app.get("/tee/socket-probe", async (c) => {
+  // ?path=/Tappd/TdxQuote&method=POST probes one arbitrary path. Without it the
+  // built-in list runs. The arbitrary form matters: each wrong guess otherwise
+  // costs a rebuild plus a CVM boot, and the socket only exists in here.
+  const one = c.req.query("path");
+  if (one) {
+    const method = (c.req.query("method") || "POST").toUpperCase() as "GET" | "POST";
+    return c.json({ tee: detectTee(), results: [await probeSocket(one, method)] });
+  }
+  const results = [];
+  for (const [path, method] of PROBE_PATHS) results.push(await probeSocket(path, method));
+  return c.json({ tee: detectTee(), results });
 });
 
 app.get("/tee/health", (c) => c.json({ ok: true, projects: PROJECTS, tee: detectTee() }));

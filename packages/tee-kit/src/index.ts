@@ -32,6 +32,8 @@ export {
   detectTee,
   type HardwareQuote,
   type TeeMode,
+  probeSocket,
+  PROBE_PATHS,
 } from "./hardware.js";
 
 export { signQuote, parseQuote, attestationDigest, type Quote } from "./attest.js";

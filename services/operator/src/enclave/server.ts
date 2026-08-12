@@ -41,7 +41,11 @@ import {
 import { clearBatchUniform, type BatchOrder } from "../batch.js";
 import { readFeed } from "../ftso.js";
 import { marketById } from "../markets.js";
-import { getHardwareQuote, detectTee } from "./hardware.js";
+// From the published kit, not a local copy. There used to be a duplicate of this
+// module here; the dstack RPC fix landed in the kit and this endpoint kept
+// reporting available:false against a machine that was already producing a real
+// TDX quote on the other route. One source or the bug comes back.
+import { getHardwareQuote, detectTee } from "flare-tee-kit";
 import { teePlane, teeSummary, logTenants } from "./multi.js";
 import { signBatchQuote, enclaveAddress, enclaveConfigured } from "../attestation.js";
 

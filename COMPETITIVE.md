@@ -75,16 +75,22 @@ This is the bounty, so it deserves no hand-waving.
 chain-side proof and no hardware. A judge who only asks "is it a real TEE?" scores Torch
 higher. A judge who asks "what does the chain actually check?" scores us higher.
 
-**So we take the union** — that was the plan, and it is not done. We deployed the enclave
-to a Phala dstack CVM on 2026-08-11. The host is genuine TDX and `detectTee()` correctly
-reported `dstack` where Heroku reports `none`, but the guest agent never served a quote:
-all four `/prpc/*` spellings returned HTML 404s, so `hardwareAttestation.available` stayed
-`false`. See [phala/README.md](phala/README.md) for the run log.
+**So we take the union — and it landed.** The enclave runs on a Phala dstack CVM
+(`tdx.small`, prod5) and `/tee/attestation` returns `available: true` with a **5010-byte
+Intel TDX quote**. Critically, `report_data` is the batch payload hash, so the CPU
+signature covers *that specific batch* rather than the bare fact an enclave was running.
+Evidence in [phala/evidence/](phala/evidence/).
 
-**So the honest scoreboard is:** Torch has the hardware and no chain-side proof. We have
-the chain-side proof and no hardware measurement. Neither of us is hardware-attested in a
-way a verifier could check today — the difference is that our endpoint says so and theirs
-reports a self-declared `IMAGE_DIGEST`.
+Getting there took four deploys, because the guest agent's RPC is `/GetQuote` at the
+socket root — no `/prpc` prefix, no `Service.Method` form. Every guess returned an HTML
+404 until the enclave was made to ask the socket what it served. That probe is still
+shipped at `/tee/socket-probe`.
+
+**So the scoreboard is now:** Torch has a real TDX host and never fetches a quote from it —
+`agent/src/tee.ts` returns `process.env.IMAGE_DIGEST`, a value the container declares about
+itself, and nothing on-chain checks it. dorr fetches a real quote, binds it to the payload,
+and `TEEAttestationVerifier` checks it on Flare. **Both halves, which is what this section
+set out to claim and could not until now.**
 
 ## 5 · The one thing Torch cannot copy
 
