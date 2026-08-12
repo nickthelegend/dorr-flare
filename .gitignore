@@ -30,3 +30,6 @@ demo-take/
 # registered on-chain — losing it means re-registering. Backed up out of Heroku
 # before that app was deleted. Never commit.
 phala/.enclave-secrets.json
+
+# Narration audio — regenerate with tools/demo/tts.py, do not commit 12MB of wav
+audio/*.wav
