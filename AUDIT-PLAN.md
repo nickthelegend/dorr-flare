@@ -227,3 +227,55 @@ open is unchanged and is **not** a flow in this plan:
   Blocked on a Phala Cloud / GCP Confidential Space account that does not exist in
   this repo. The code fetches a real quote when the socket is present and refuses
   to fabricate one when it is not, and `/verify` states this plainly to any judge.
+
+---
+
+# CROSS-PROJECT PASS — dorr · hadal · molfi
+
+## dorr — 33/33 API, all repo checks green
+
+Re-run after repointing the enclave at the Phala TDX CVM. `E3` was **inverted**:
+it used to assert `available:false` was reported honestly; it now asserts a real
+quote. `available=True`, 5010 bytes. 103 bun + 31 Solidity, typecheck, lint,
+`/`, `/trade`, `/verify` all 200.
+
+## hadal — one critical FAIL, fixed
+
+**`hadal-money.vercel.app` was a stale pre-Flare deployment.**
+
+| | live site (before) | the repo |
+|---|---|---|
+| title | "Send money privately on **Ethereum**" | "Confidential **FXRP** payments on **Flare**" |
+| asset | wraps **USDC** → cUSDC | wraps **FXRP** → cFXRP |
+| Flare mentioned | **no** | yes |
+| WalletConnect id | `veil-local` (the project's old name) | — |
+| console | 400 + 403 from `api.web3modal.org` | — |
+
+The current Flare version had **never been deployed** — that domain is served by
+an older `veilpay-uz32` Vercel project. A judge following hadal's link would have
+seen an Ethereum/USDC app with no Flare anywhere, while its contracts sit on
+Coston2.
+
+**Fixed:** deployed the real frontend to **https://hadal-flare.vercel.app** with
+the live Coston2 addresses (`cFXRP 0x2B3323Db…`, `FXRP 0x0b6A3645…`, gate
+`0xdF49097D…`). Verified: title correct, Flare + FXRP present, **zero** mentions
+of Ethereum/USDC, zero failed requests, zero console errors.
+
+Also green: 56/56 contract tests, `ConfidentialFXRP.owner` off the anvil key
+(`0xC5078d70…`), demo instance `isTeeAttested() == true`.
+
+## molfi — all green
+
+50/50 tests. `FlareTeeManager` status **2**. `molfi.fun` and `/markets` both live
+with a real market (BTC above $63,400, live price $63,430.54, odds 1.98x/2.02x)
+served from the real backend. Zero failed requests, zero console errors.
+
+Known and deliberately unfixed: the registered proxy URL is a dead Cloudflare
+tunnel. Re-pointing it calls `updateTeeMachineSettings`, which demotes
+PRODUCTION → PAUSED — documented in molfi's README as the reason it was left.
+
+## Untested
+
+hadal's `NEXT_PUBLIC_TEE_URL` still points at `http://localhost:3002`; its TEE
+service is not publicly deployed, so the frontend's TEE-dependent path is
+unexercised in production. Everything else on all three is verified live.
