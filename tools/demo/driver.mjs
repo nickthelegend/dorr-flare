@@ -302,7 +302,7 @@ const takes = {
 
     await line(page, "a-feed"); await hold(page, "a-feed");
 
-    await page.goto(`${URLS.explorer}/address/0x65b705A49778b9d7bD741A0A979162393c699a98`, { waitUntil: "domcontentloaded" });
+    await page.goto(`${URLS.explorer}/tx/0x3a732edf643605afbbfaa0c98bd1bc6214ab894759415e7c5a5b76e2209e3312`, { waitUntil: "domcontentloaded" });
     await line(page, "a-explorer");
     await smoothTo(page, 600, 3000); await smoothTo(page, 1200, 3000);
     await hold(page, "a-explorer");
@@ -327,7 +327,7 @@ const takes = {
     // b-wrap / b-send need a funded cFXRP position and hadal's TEE service, which
     // is not publicly deployed (NEXT_PUBLIC_TEE_URL is still localhost). Those two
     // beats are not filmed rather than faked; recording.md says so.
-    await page.goto(`${URLS.explorer}/address/0x2B3323Dba63a4a1Ed0a4B02d0B3fD5C901760881`, { waitUntil: "domcontentloaded" });
+    await page.goto(`${URLS.explorer}/address/0x2B3323Dba63a4a1Ed0a4B02d0B3fD5C901760881?tab=txs`, { waitUntil: "domcontentloaded" });
     await line(page, "b-explorer");
     await smoothTo(page, 600, 3000); await smoothTo(page, 1200, 3000);
     await hold(page, "b-explorer");
@@ -347,7 +347,7 @@ const takes = {
     await until(page, "markets rendered", () => /Strike price|Current price/i.test(document.body.innerText), 45000);
     await line(page, "c-markets"); await smoothTo(page, 500, 2500); await hold(page, "c-markets");
 
-    await page.goto(`${URLS.explorer}/address/0x0A752D897f7D61Ce0690EEF812027000813467bb`, { waitUntil: "domcontentloaded" });
+    await page.goto(`${URLS.explorer}/address/0x1a9C4A0f9D76c0b1D91d22E24E573a9b377618aE?tab=txs`, { waitUntil: "domcontentloaded" });
     await line(page, "c-tee"); await smoothTo(page, 700, 3000); await hold(page, "c-tee");
 
     await line(page, "c-honest"); await hold(page, "c-honest");
@@ -372,6 +372,14 @@ async function main() {
     ],
   });
   const ctx = await browser.newContext({
+    // Record the PAGE, not the screen.
+    //
+    // Screen capture plus a crop rect put the macOS menu bar, the Chrome tab
+    // strip and the URL bar in every frame, and — because the display is
+    // 1920x1080 and the crop was 1440x900 at the origin — sliced the right-hand
+    // trading panel off mid-column. Playwright writes the viewport itself: no
+    // desktop, no browser chrome, no geometry to get wrong.
+    recordVideo: { dir: process.env.DEMO_VIDEO_DIR || "/tmp/dorr-video", size: { width: 1440, height: 900 } },
     viewport: { width: 1440, height: 900 },
     deviceScaleFactor: 2,
     userAgent:
@@ -415,7 +423,10 @@ async function main() {
     process.exitCode = 1;
   } finally {
     console.log(`new console errors this run: ${errCount()}`);
+    const vid = await page.video()?.path().catch(() => null);
+    await ctx.close();            // flushes the video; browser.close() alone can truncate
     await browser.close();
+    if (vid) console.log(`VIDEO ${vid}`);
   }
 }
 main();

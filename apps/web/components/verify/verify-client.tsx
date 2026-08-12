@@ -79,6 +79,8 @@ export default function VerifyClient() {
 
   const hw = att?.hardwareAttestation;
 
+  const hardwareLive = Boolean(hw?.available);
+
   return (
     <div className="landing-root min-h-screen bg-[#0c0c0c] text-white">
       <header className="sticky top-0 z-50 border-b border-white/[0.07] bg-[#0c0c0c]/70 backdrop-blur-xl">
@@ -270,10 +272,28 @@ export default function VerifyClient() {
         </dl>
 
         <p className="mt-14 max-w-3xl text-sm leading-relaxed text-white/40">
+          {/* Reads the live attestation rather than asserting either way. This
+              sentence used to say "without hardware attestation on this host"
+              unconditionally, and once the enclave moved to a TDX CVM it sat
+              directly under a row reading "live · dstack" and contradicted it.
+              A verify page that argues with itself is worse than one that
+              claims nothing. */}
           The honest summary: dorr is the only entry we know of whose enclave quote is{" "}
           <span className="text-white/70">checked on-chain and bound to the specific batch it
-          settled</span>, and it is also an enclave without hardware attestation on this host. Both
-          of those are true at once, and a reviewer deserves to see them on the same page.
+          settled</span>
+          {hardwareLive ? (
+            <>
+              , and that quote now comes from{" "}
+              <span className="text-white/70">real Intel TDX hardware</span> whose report data is the
+              batch payload hash. Both halves at once — which is the thing this page exists to let
+              you check rather than take our word for.
+            </>
+          ) : (
+            <>
+              , and it is also an enclave without hardware attestation on this host. Both of those
+              are true at once, and a reviewer deserves to see them on the same page.
+            </>
+          )}
         </p>
 
         <div className="mt-12 flex flex-wrap gap-3">

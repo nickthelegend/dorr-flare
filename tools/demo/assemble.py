@@ -38,8 +38,17 @@ def cut(take, tmp):
     src = os.path.join(ROOT, f"raw-take-{take}.mp4")
     total = vdur(src)
     rows = beats(take)
-    # The recorder starts ~2s before the driver, so mark 0 is not frame 0.
-    offset = 2.0
+    # Derive the offset instead of assuming it.
+    #
+    # Playwright starts writing the video when the context is created, which is
+    # before t0 — and how long before varies with preflight and the first
+    # navigation (measured: 1.6s for take a, 15.3s for take c). Hard-coding it
+    # desynced every beat. The last beat's end is known exactly (its mark plus
+    # its own narration plus the breath), so the lead-in is what remains.
+    last = rows[-1]
+    tail = last["ms"] / 1000.0 + DUR.get(last["id"], 0) + 0.45
+    offset = max(0.0, total - tail)
+    print(f"  lead-in {offset:.1f}s (video {total:.1f}s, beats end {tail:.1f}s)")
     clips = []
     for i, b in enumerate(rows):
         start = offset + b["ms"] / 1000.0
