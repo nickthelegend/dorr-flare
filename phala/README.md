@@ -36,10 +36,15 @@ specific build, and `latest` moving under you is how that claim goes stale.
 
 ## The cycle
 
+The `dorr-enclave` Heroku app is **gone** — the enclave lives on TDX now. Its
+master seed was copied to `phala/.enclave-secrets.json` (gitignored) before the
+app was deleted, because every tenant address derives from it and dorr's is
+registered on `TEEAttestationVerifier`. Lose that file and the on-chain
+registration has to be redone.
+
 ```bash
 export PHALA_API_KEY=phak_…
-export HEROKU_API_KEY=HRKU-…
-export ENCLAVE_IMAGE=ghcr.io/nickthelegend/dorr-enclave:1
+export ENCLAVE_IMAGE=ghcr.io/nickthelegend/dorr-enclave:6
 
 ./deploy.sh      # refuses if a CVM already exists — billing starts here
                  # wait ~2 min
@@ -69,7 +74,7 @@ enclave everywhere:
 
 | project | what to change | where |
 |---|---|---|
-| **dorr** | `ENCLAVE_URL` config var on `dorr-operator` | Heroku |
+| **dorr** | `ENCLAVE_URL` on `dorr-operator` (Heroku) **and** `NEXT_PUBLIC_ENCLAVE_URL` on Vercel, then redeploy the web app | both |
 | **hadal** | `setTeeAddress(0x24105E559E…)` — already the hadal tenant | one owner tx |
 | **molfi** | `TENANT_MASTER_SEED` / point its sibling handlers at the CVM | molfi env |
 

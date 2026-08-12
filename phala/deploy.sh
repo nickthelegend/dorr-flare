@@ -5,13 +5,12 @@
 # It refuses to run when a CVM already exists — two running CVMs is the
 # expensive mistake, and the whole point of this kit is not making it.
 #
-#   PHALA_API_KEY=… HEROKU_API_KEY=… ENCLAVE_IMAGE=docker.io/you/dorr-enclave:1 ./deploy.sh
+#   PHALA_API_KEY=… ENCLAVE_IMAGE=ghcr.io/nickthelegend/dorr-enclave:6 ./deploy.sh
 set -euo pipefail
 
 API=https://cloud-api.phala.network/api/v1
 : "${PHALA_API_KEY:?set PHALA_API_KEY}"
 : "${ENCLAVE_IMAGE:?set ENCLAVE_IMAGE (must be PUBLIC — the CVM pulls it with no creds)}"
-: "${HEROKU_API_KEY:?set HEROKU_API_KEY (secrets are read from the live app, never git)}"
 
 export CVM_NAME="${CVM_NAME:-dorr-enclave}"
 export TEEPOD_ID="${TEEPOD_ID:-18}"       # 18 = prod9, 26 = prod5 (both US-WEST-1)
@@ -28,18 +27,19 @@ if [ "$n" != "0" ]; then
 fi
 echo "  none running — safe to create one"
 
-say "1 · pull live secrets from Heroku"
-cfg=$(curl -fsS "https://api.heroku.com/apps/dorr-enclave/config-vars" \
-  -H "Accept: application/vnd.heroku+json; version=3" \
-  -H "Authorization: Bearer $HEROKU_API_KEY")
-get() { printf '%s' "$cfg" | python3 -c "import sys,json;print(json.load(sys.stdin).get('$1',''))"; }
+say "1 · load the enclave secrets"
+# From a local gitignored file, not Heroku. The dorr-enclave app was deleted once
+# the enclave moved to TDX, and this seed is the one thing that could not be
+# recreated: every tenant address derives from it and dorr's is registered on
+# TEEAttestationVerifier, so a different seed silently stops the chain
+# recognising our quotes. It was copied out before that app was removed.
+SECRETS="$(dirname "$0")/.enclave-secrets.json"
+[ -f "$SECRETS" ] || { echo "missing $SECRETS — cannot deploy without the master seed"; exit 1; }
+get() { python3 -c "import json;print(json.load(open('$SECRETS')).get('$1',''))"; }
 
-# TEE_MASTER_SEED must carry over verbatim. Every tenant address derives from it,
-# and dorr's is registered on TEEAttestationVerifier — a fresh seed silently
-# invalidates that registration and the chain stops recognising our quotes.
 export TEE_MASTER_SEED; TEE_MASTER_SEED=$(get TEE_MASTER_SEED)
 [ -n "$TEE_MASTER_SEED" ] || { echo "TEE_MASTER_SEED missing — refusing to deploy"; exit 1; }
-echo "  seed carried over (len ${#TEE_MASTER_SEED}) — tenant addresses unchanged"
+echo "  seed loaded (len ${#TEE_MASTER_SEED}) — tenant addresses will be unchanged"
 
 export TEE_PROJECTS TEE_MEASUREMENT TEE_ENCLAVE_KEY TEE_ID FLARE_RPC_URL
 export DORR_VAULT_ADDRESS DORR_SETTLEMENT_ADDRESS DORR_TEE_VERIFIER_ADDRESS

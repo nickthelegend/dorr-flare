@@ -25,3 +25,8 @@ apps/web/.claude/
 # demo take artifacts (large binaries)
 demo-take/
 .vercel
+
+# The enclave master seed. Every tenant address derives from it and dorr's is
+# registered on-chain — losing it means re-registering. Backed up out of Heroku
+# before that app was deleted. Never commit.
+phala/.enclave-secrets.json
