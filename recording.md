@@ -1,152 +1,127 @@
-# recording.md — three-project demo, one clean take
+# recording.md — dorr, one clean take, ~7:00
 
-Three submissions to one hackathon, one confidential-compute story split across
-them. Recorded as **three takes** sharing one intro and one outro, because a
-judge scoring dorr should not have to sit through molfi to reach the part that
-matters to them.
+**dorr only.** Perpetual futures on Flare Coston2 where the venue matching your
+order cannot read it.
 
-**Blockchain: yes.** Flare Coston2 (chainId 114) throughout. Beats marked ✍️
-involve a real EIP-191 signature or an on-chain transaction. Testnet only — FXRP
-and C2FLR with no market value. No mainnet key exists in any of these repos and
-none is used.
+**Blockchain: yes.** Flare Coston2, chainId 114. Beats marked ✍️ produce a real
+EIP-191 signature or a real on-chain transaction. **Testnet only** — FXRP and
+C2FLR with no market value. No mainnet key exists in this repo and none is used;
+the driver aborts with `PREFLIGHT_RPC_NOT_TESTNET` if the chain id is not 114.
 
-**Live surfaces at record time**
+**Slides.** Beats marked 🎞 are HyperFrames scenes, not browser capture. They
+exist because a raw JSON blob on screen is unreadable at video bitrate — the TEE
+quote is 5,010 bytes and its meaning lives in three fields. Those get typeset and
+annotated. Everything else is the real app.
+
+## Live surfaces at record time
 
 | | |
 |---|---|
-| dorr | `https://dorr-flare.vercel.app` |
-| dorr operator | `https://dorr-operator-9449c5bb5086.herokuapp.com` |
-| dorr enclave | Phala dstack CVM, `…8795.dstack-pha-prod5.phala.network` |
-| hadal | `https://hadal-flare.vercel.app` |
-| molfi | `https://molfi.fun` |
+| app | `https://dorr-flare.vercel.app` |
+| operator | `https://dorr-operator-9449c5bb5086.herokuapp.com` |
+| enclave | `https://59b7ffee2f565bdebf0ff4b076b0f1c0ba4152e4-8795.dstack-pha-prod5.phala.network` |
 | explorer | `https://coston2-explorer.flare.network` |
+| demo wallet | `0x0b6A564E9dC664b9223FFDAe35dD585cfC010B12` — vault **4.6 FXRP**, 4.5 locked, **0.1 free** |
 
-**Motion rule.** Every scroll is `behavior:"smooth"` driven from the page, never
-a wheel event — wheel scrolling stutters on capture and the GSAP scenes on
-dorr's landing page are scroll-linked, so a jerky scroll makes a working
-animation look broken. Explorer pages get the same treatment.
+> **Free margin is 0.1 FXRP.** Earlier takes locked 4.5 into open commitments.
+> Either close them first or size every order at 0.05, or the commit beat fails
+> on `Insufficient free balance` — which would be a real failure, not a bug to
+> edit around.
 
----
+**Motion.** Every scroll is page-driven `behavior:"smooth"`. Wheel events stutter
+on capture, and dorr's landing scenes are scroll-linked — a jerky scroll makes a
+working animation look broken. Explorer pages get the same treatment.
 
-## Take A — dorr (the main one, ~3:10)
-
-| id | beat | signing |
-|---|---|---|
-| `a-intro` | Title card. The problem in one sentence: on every public venue, your order is visible before it fills. | |
-| `a-land-hero` | dorr landing. Hero reads a **measured** number — `/demo/ab` ran this pageview, so "on a public DEX it took $205.10" is live, not copy. | |
-| `a-land-scroll` | Smooth-scroll the four GSAP scenes: seal → operator blind → uniform clearing → chain checks the band. | |
-| `a-attack-open` | Open the Attack Lab from the navbar. | |
-| `a-attack-run` | Run the sandwich. Transparent DEX: bot front-runs, victim overpays **$205.01**. dorr: 25,000 real SHA-256 preimage guesses, 0 matches, attack aborted, bot profit **$0.00**. | |
-| `a-attack-tabs` | Sealed tab — real drand round, operator **refused** to decrypt early. Batch tab — sandwich clears to `0.000000`. | |
-| `a-connect` | Connect wallet. Coston2. Real balance appears from the vault: **4.60 FXRP**. | |
-| `a-order-form` | Set margin and leverage. Notional and liquidation distance recompute live off the FTSO mark. | |
-| `a-commit` ✍️ | **Sign the order.** Overlay held until the commit is accepted. Real EIP-191 envelope. | ✍️ |
-| `a-feed` | The public feed shows the commitment **hash only** — no side, size or price. That is the whole claim, on screen. | |
-| `a-explorer` | Explorer: the vault deposit and a settled batch. Smooth-scroll the logs. | |
-| `a-verify` | `/verify` — contracts read from the operator, attestation from the enclave. **"Hardware attestation is live. Intel TDX quote…"** | |
-| `a-tee` | The raw quote: `available: true`, 5010 bytes, `report_data` = the batch payload hash. Bound to *this* batch, not "an enclave exists". | |
-
-## Take B — hadal (~1:00)
-
-> `b-wrap` and `b-send` were cut, not skipped. Both need hadal's TEE service,
-> which is not publicly deployed — `NEXT_PUBLIC_TEE_URL` still points at
-> localhost. Filming a wrap that cannot complete, or narrating one that did not
-> happen, would be worse than not showing it. The guard beat carries hadal's
-> claim instead, and it is the honest half.
-
-| id | beat | signing |
-|---|---|---|
-| `b-land` | hadal landing. Confidential FXRP payments on Flare — the chain records that you paid, never how much. | |
-| `b-explorer` | Explorer: the transfer exists, the amount does not appear. Scroll the event log slowly to make the absence legible. | |
-| `b-guard` | The honest part: `ConfidentialFXRP` releases value only against a signer Flare's registry reports as PRODUCTION. A TDX quote alone is refused with `TeeNotAttested` — two different attestations, and the contract reads one of them. | |
-
-## Take C — molfi (~1:10)
-
-> `c-bid` was cut for the same reason: `SealedBidBook.sealBid` needs a funded
-> wallet and molfi's own bid flow, neither of which was set up. The market page
-> shows real live data; a staged bid would not have been real.
-
-| id | beat | signing |
-|---|---|---|
-| `c-land` | molfi landing — LIVE ON FLARE · COSTON2. | |
-| `c-markets` | A real market: BTC above $63,400, live FTSO price, odds both sides, countdown. | |
-| `c-tee` | `getTeeMachineStatus` → **2 = PRODUCTION** on Flare's own `FlareTeeManager`. Flare's data providers reached the machine and voted it available. | |
-| `c-honest` | And what it does not prove: registration ran with `SIMULATED_TEE=true`, so the code hash is declared, not measured. Said out loud, on camera. | |
-| `c-outro` | The three together: molfi has Flare's verdict, dorr has the hardware measurement, hadal keeps its own key custody. Thanks for watching. | |
+**Framing.** Playwright records the viewport at 1440×900. Not screen capture:
+that put the macOS menu bar and Chrome's tab strip in frame and sliced the right
+panel off mid-column.
 
 ---
 
-## Pre-flight (each of these has cost a take before)
+## Beats
 
-- **Warm every market first.** After a dyno restart the operator backfills charts
-  one market at a time; an unwarmed market renders ~4 bars and looks broken. Hit
-  all six candle endpoints and wait for ≥300 bars each *before* rolling.
-- **Clear persisted state** — `localStorage`, wallet connection, positions cache.
+### Act 1 — the problem (0:00–1:15)
+
+| id | beat | |
+|---|---|---|
+| `intro` | 🎞 Title. The problem in one sentence: on every public venue your order is visible before it fills. | 🎞 |
+| `land-hero` | Landing hero. The badge number is **measured this pageview** — `/demo/ab` ran the attack against the live pool, so "$205.10" is a live result, not copy. | |
+| `land-seal` | Scene 1 — your order is timelock-encrypted in the browser. | |
+| `land-blind` | Scene 2 — the operator holds ciphertext it cannot open. | |
+| `land-clear` | Scene 3 — the epoch clears at one uniform price. | |
+| `land-band` | Scene 4 — the chain re-reads FTSO and reverts if our price is off-market. | |
+
+### Act 2 — prove it (1:15–2:45)
+
+| id | beat | |
+|---|---|---|
+| `attack-open` | Open the Attack Lab. Scope the click to the **navbar** — once the dialog is open its own tab is also labelled "Attack Lab" and the selector stops being unique. | |
+| `attack-run` | Run it. Transparent DEX: bot front-runs, victim overpays **$205**. dorr: **0 / 25,000** real SHA-256 preimages, attack aborted, bot profit **$0.00**. | |
+| `attack-sealed` | Sealed tab — a live drand round, and the operator **refused** when it tried to decrypt early. | |
+| `attack-batch` | Batch tab — under uniform-price clearing a sandwich nets `0.000000`. Not policy, construction. | |
+| `attack-ab` | A/B tab — same order, two venues, side by side. | |
+
+### Act 3 — use it (2:45–4:45)
+
+| id | beat | |
+|---|---|---|
+| `connect` | Connect wallet. Coston2. Balance is a **real vault read**, not a number the page invented. | |
+| `collateral` | Collateral panel: balance, free, locked, and the vault address it reads from. | |
+| `faucet` | `GET FXRP` — where testnet collateral comes from. | |
+| `deposit` ✍️ | **Deposit FXRP into the vault.** Signing overlay held until the tx confirms on-chain. | ✍️ |
+| `order-form` | Margin and leverage. Notional and liquidation distance recompute off the live FTSO mark. | |
+| `privacy` | Privacy toggle: *Private* → "the public sees only a hash"; *Public foil* → "your full order is broadcast". A real behavioural switch. | |
+| `commit` ✍️ | **Sign the order.** Real EIP-191 envelope bound to these exact parameters. Overlay until the commitment appears in the feed. | ✍️ |
+| `feed` | The whole claim, on screen: the public feed shows a **hash**. No side, no size, no price, no leverage. | |
+| `positions` | The position that hash became — visible to its owner, opaque to everyone else. | |
+| `withdraw` ✍️ | **Withdraw.** Depositor-signed; the operator is uninvolved and has no withdrawal path. | ✍️ |
+
+### Act 4 — check it (4:45–7:00)
+
+| id | beat | |
+|---|---|---|
+| `explorer-tx` | Explorer: the settled batch transaction, logs expanded. | |
+| `explorer-vault` | The vault's transaction list — deposits and depositor-signed withdrawals, no operator path among them. | |
+| `verify` | `/verify` — contracts from the operator, attestation from the enclave. Nothing typed by hand. | |
+| `tee-live` | The page states **"Hardware attestation is live"**, `live · dstack`, and that the operator holds no attestation key. | |
+| `tee-json` | 🎞 The raw `/tee/attestation` JSON, typeset. Walk the three fields that matter. | 🎞 |
+| `tee-bound` | 🎞 The one that matters: `report_data` **equals the batch payload hash**. The CPU signature covers *this batch*, not "an enclave exists". Contrast: the competing entry reports `process.env.IMAGE_DIGEST` and never fetches a quote. | 🎞 |
+| `honest` | 🎞 What is *not* proven: trusted operator for matching, vAMM not an external book, testnet, unaudited. Said plainly. | 🎞 |
+| `outro` | 🎞 Where to check every claim — repo, contracts, tx hashes, `/verify`. Thanks for watching. | 🎞 |
+
+**28 beats.** Narration ~6:10; holds and scroll settles bring it to ~7:00.
+
+---
+
+## Pre-flight — each of these has cost a take
+
+- **Warm all six markets.** After a dyno restart the operator backfills one at a
+  time; an unwarmed market renders ~4 bars and looks broken. Poll each candle
+  endpoint until ≥300 bars *before* rolling.
+- **Free margin ≥ the order size.** Currently 0.1 FXRP. Close open commitments or
+  size at 0.05.
+- **Scope the Attack Lab trigger to the navbar.** The dialog contains a tab with
+  the same label; `button:has-text('Attack Lab')` is ambiguous once open. This is
+  what killed the previous take at beat 4.
+- **Clear persisted state** — localStorage, wallet connection, positions cache.
 - **Count console errors first**, then assert the count did not grow. Absolute
-  zero is the wrong check; a pre-existing warning is not this take's failure.
-- **Detect completion by real state**, never by a spinner disappearing: the
-  commit is done when the feed contains the commitment hash, not when a toast
-  shows.
-- **Suppress every popup that is not the deliberate overlay** — OS notifications,
-  the wallet's own confirm dialog (auto-approved for the session), Vercel's
-  toolbar.
-- **Verify the recorder sees content** — 2s capture, extract a frame, check it is
-  not black. Already done once: 925 KB frame, real content.
+  zero fails on a pre-existing warning that is not this take's fault.
+- **Detect completion by real state.** The commit is done when the commitment is
+  in the feed — not when a toast appears, and not when a spinner leaves.
+- **Do not poll `dorr-flare.vercel.app` in wait loops.** Repeated curls tripped
+  Vercel's bot mitigation, which then served a checkpoint to the *recording*
+  browser: zero buttons, and the first symptom was an unrelated `boundingBox`
+  timeout 30s later. Use the RPC as a keep-alive instead.
+- **Verify the recorder sees the app** — pull a frame and *look at it*. A byte
+  count proves "not black", which is how a take full of desktop chrome passed.
 
 ## Known risks
 
-- **The Phala CVM is billed hourly and will be destroyed.** Record `a-verify` and
-  `a-tee` while it is up. Once it is gone `/verify` honestly reverts to "no
-  hardware" — which is correct behaviour and exactly why it must be filmed now.
-- **The public Coston2 RPC 429s** under load. If a signing beat times out, that
-  is a real failure: fix and re-record rather than trimming it out.
-
----
-
-# RECORDING STATUS (last run)
-
-| take | beats | footage | verdict |
-|---|---|---|---|
-| **C — molfi** | 5 of 6 | `raw-take-c.mp4`, 88.9s, real content at 10/40/70/95% | **REJECT** — `c-bid` missing |
-| **A — dorr** | 4 of 13 | partial | **REJECT** — blocked at the Attack Lab dialog |
-| **B — hadal** | 0 | none | not attempted |
-
-## Why C is rejected
-
-`c-bid` is a **signing beat** — "place a sealed bid, ciphertext leaves the
-browser". It was never written into the driver because `SealedBidBook.sealBid`
-needs a funded wallet and molfi's own bid flow, which was not set up. Everything
-else about take C is good: 5 beats in order, no gaps, real frames throughout,
-zero console errors.
-
-Cutting it as-is would ship a molfi video where nobody ever places a bid — the
-one beat that shows molfi *doing* something rather than displaying something.
-
-## Why A is rejected
-
-Blocked at `a-attack-run`. The Attack Lab dialog opens (`a-attack-open` logs),
-then `locator.boundingBox` times out on the run button. Two label fixes already
-landed and neither was it:
-
-- the navbar trigger is `Attack Lab`, title case — **not** `ATTACK LAB`
-- the run control's DOM text is `Run attack` — the uppercase is CSS, and
-  `:has-text` matches the DOM, not the rendered transform
-
-The remaining suspect is selector ambiguity: the dialog contains its own tab
-also labelled "Attack Lab", so `button:has-text('Attack Lab')` is no longer
-unique once the dialog is open. Next step is to scope the trigger to the navbar
-and the run control to the active tab panel, then re-run.
-
-## Fixed along the way (all verified by a real run)
-
-- **`NOT_HYDRATED` guard** — names a bot checkpoint or failed load instead of
-  surfacing as an unrelated `boundingBox` timeout 30s later on the next click.
-- Guard checks interactivity **and** copy, not buttons alone — molfi's landing
-  is entirely links and legitimately has zero buttons.
-- `/trade` is client-rendered (~12 words of SSR text); it now waits for the real
-  terminal (`LIVE CHART` + a canvas) rather than a word count.
-- Challenge-tolerant navigation and a non-automation browser fingerprint, after
-  my own curl wait-loops tripped Vercel's bot mitigation and it then served the
-  checkpoint to the recording browser.
-- Wait-loops must not poll `dorr-flare.vercel.app`. That is what caused the
-  mitigation in the first place.
+- **The Phala CVM is billed hourly and will be destroyed.** `verify`, `tee-live`,
+  `tee-json` and `tee-bound` must be filmed while it is up. Once it is gone
+  `/verify` honestly reverts to "no hardware" — correct behaviour, and exactly
+  why these beats cannot wait.
+- **The public Coston2 RPC 429s** under load. A signing beat that times out is a
+  real failure: fix it and re-record rather than trimming it out.
+- **Signing beats are real transactions.** `deposit` and `withdraw` move testnet
+  FXRP; `commit` locks margin. Sized so the take can run several times.
