@@ -35,7 +35,7 @@ specific build, and `latest` moving under you is how that claim goes stale.
 ```bash
 export PHALA_API_KEY=phak_…
 export HEROKU_API_KEY=HRKU-…
-export ENCLAVE_IMAGE=docker.io/<you>/dorr-enclave:1
+export ENCLAVE_IMAGE=ghcr.io/nickthelegend/dorr-enclave:1
 
 ./deploy.sh      # refuses if a CVM already exists — billing starts here
                  # wait ~2 min
