@@ -33,3 +33,6 @@ phala/.enclave-secrets.json
 
 # Narration audio — regenerate with tools/demo/tts.py, do not commit 12MB of wav
 audio/*.wav
+out/
+raw-take-*.mp4
+beat-log-*.txt

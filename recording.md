@@ -46,23 +46,30 @@ animation look broken. Explorer pages get the same treatment.
 | `a-verify` | `/verify` — contracts read from the operator, attestation from the enclave. **"Hardware attestation is live. Intel TDX quote…"** | |
 | `a-tee` | The raw quote: `available: true`, 5010 bytes, `report_data` = the batch payload hash. Bound to *this* batch, not "an enclave exists". | |
 
-## Take B — hadal (~1:30)
+## Take B — hadal (~1:00)
+
+> `b-wrap` and `b-send` were cut, not skipped. Both need hadal's TEE service,
+> which is not publicly deployed — `NEXT_PUBLIC_TEE_URL` still points at
+> localhost. Filming a wrap that cannot complete, or narrating one that did not
+> happen, would be worse than not showing it. The guard beat carries hadal's
+> claim instead, and it is the honest half.
 
 | id | beat | signing |
 |---|---|---|
 | `b-land` | hadal landing. Confidential FXRP payments on Flare — the chain records that you paid, never how much. | |
-| `b-wrap` ✍️ | Wrap FXRP → cFXRP. Real transaction. | ✍️ |
-| `b-send` ✍️ | Send a confidential amount. The amount is sealed in the browser; the transfer event carries no value. | ✍️ |
 | `b-explorer` | Explorer: the transfer exists, the amount does not appear. Scroll the event log slowly to make the absence legible. | |
 | `b-guard` | The honest part: `ConfidentialFXRP` releases value only against a signer Flare's registry reports as PRODUCTION. A TDX quote alone is refused with `TeeNotAttested` — two different attestations, and the contract reads one of them. | |
 
-## Take C — molfi (~1:20)
+## Take C — molfi (~1:10)
+
+> `c-bid` was cut for the same reason: `SealedBidBook.sealBid` needs a funded
+> wallet and molfi's own bid flow, neither of which was set up. The market page
+> shows real live data; a staged bid would not have been real.
 
 | id | beat | signing |
 |---|---|---|
 | `c-land` | molfi landing — LIVE ON FLARE · COSTON2. | |
 | `c-markets` | A real market: BTC above $63,400, live FTSO price, odds both sides, countdown. | |
-| `c-bid` ✍️ | Place a sealed bid. Ciphertext leaves the browser; the book holds a commitment. | ✍️ |
 | `c-tee` | `getTeeMachineStatus` → **2 = PRODUCTION** on Flare's own `FlareTeeManager`. Flare's data providers reached the machine and voted it available. | |
 | `c-honest` | And what it does not prove: registration ran with `SIMULATED_TEE=true`, so the code hash is declared, not measured. Said out loud, on camera. | |
 | `c-outro` | The three together: molfi has Flare's verdict, dorr has the hardware measurement, hadal keeps its own key custody. Thanks for watching. | |

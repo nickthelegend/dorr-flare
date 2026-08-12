@@ -117,7 +117,11 @@ function EventRow({ event }: { event: DorrEvent }) {
               TONE_TEXT[meta.tone],
             )}
           >
-            {event.type.replace("-", " ")}
+            {/* An event with no `type` used to throw here and take the whole
+                page down — "Application error: a client-side exception" over a
+                missing string in a badge. The activity log is decoration; it
+                does not get to destroy the terminal. */}
+            {(event.type ?? "event").replace("-", " ")}
           </Badge>
           <span className="ml-auto text-[10px] font-mono text-muted-foreground shrink-0">
             {relativeTime(event.at)}

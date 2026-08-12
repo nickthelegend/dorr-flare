@@ -113,8 +113,21 @@ async function installCursor(page) {
 const glide = (page, x, y, ms = 700) => page.evaluate(([x, y, ms]) => window.__glide(x, y, ms), [x, y, ms]);
 
 async function clickAt(page, sel, ms = 700) {
-  const box = await page.locator(sel).first().boundingBox();
-  if (!box) throw new Error(`NO_ELEMENT: ${sel}`);
+  let box;
+  try {
+    box = await page.locator(sel).first().boundingBox({ timeout: 15000 });
+  } catch {
+    // Dump what is actually on screen. Three runs were lost guessing at labels
+    // that turned out to be CSS transforms rather than DOM text.
+    const shot = `/tmp/fail-${Date.now()}.png`;
+    await page.screenshot({ path: shot }).catch(() => {});
+    const labels = await page.evaluate(() =>
+      [...document.querySelectorAll("button,[role=button],[role=tab]")]
+        .map((b) => (b.innerText || "").trim().replace(/\s+/g, " ").slice(0, 30))
+        .filter(Boolean).slice(0, 30)).catch(() => []);
+    throw new Error(`NO_ELEMENT: ${sel}\n  shot: ${shot}\n  on screen: ${JSON.stringify(labels)}`);
+  }
+  if (!box) throw new Error(`NO_ELEMENT (no box): ${sel}`);
   await glide(page, box.x + box.width / 2, box.y + box.height / 2, ms);
   await page.evaluate(() => window.__ring());
   await page.waitForTimeout(120);
@@ -171,7 +184,14 @@ async function installWallet(page, address) {
           // secp256k1 signature over the real message — auto-approved, not faked.
           return await window.__sign(params[0]);
         }
-        throw Object.assign(new Error("unsupported: " + method), { code: 4200 });
+        // Everything else goes to the real chain.
+        //
+        // Throwing on unlisted methods crashed /trade outright — "Application
+        // error: a client-side exception" — because the app legitimately calls
+        // eth_call, eth_getBalance and friends, and a provider that rejects them
+        // is a broken wallet rather than a strict one. A real extension proxies
+        // reads to its RPC; so does this.
+        return await window.__rpc(method, params || []);
       },
       on: () => {}, removeListener: () => {},
     };
@@ -248,7 +268,7 @@ const takes = {
     await until(page, "trade terminal up",
       () => /LIVE CHART/i.test(document.body.innerText) && document.querySelectorAll("canvas").length > 0,
       90000);
-    await clickAt(page, "button:has-text('Attack Lab')");
+    await clickAt(page, "button:has-text('⚔️')");
     await line(page, "a-attack-open"); await hold(page, "a-attack-open");
 
     await clickAt(page, "[role=dialog] button:has-text('Run attack')");
@@ -271,8 +291,11 @@ const takes = {
     await line(page, "a-order-form"); await hold(page, "a-order-form");
 
     await line(page, "a-commit", { signing: true });
-    await signingOverlay(page, true);
+    // Click first, then cover. The overlay is full-bleed at z-index 2147483645,
+    // so raising it before the click intercepts the pointer and the click times
+    // out against a button that is right there and perfectly enabled.
     await clickAt(page, "button:has-text('LONG FLR')");
+    await signingOverlay(page, true);
     await until(page, "commit accepted", () => /Committed private|commitment/i.test(document.body.innerText), 90000);
     await signingOverlay(page, false);
     await hold(page, "a-commit");
@@ -363,6 +386,24 @@ async function main() {
   // node-side signer, so the browser never holds the key
   await page.exposeFunction("__sign", (msgHex) =>
     acct.signMessage({ message: { raw: msgHex } }));
+  const RPC = process.env.FLARE_RPC_URL || "https://coston2-api.flare.network/ext/C/rpc";
+  await page.exposeFunction("__rpc", async (method, params) => {
+    const r = await fetch(RPC, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+    });
+    const j = await r.json();
+    if (j.error) throw new Error(`${method}: ${j.error.message}`);
+    return j.result;
+  });
+
+  // Surface the real exception. "Application error: a client-side exception"
+  // tells you nothing; the pageerror does.
+  page.on("pageerror", (e) => console.error("PAGEERROR:", String(e).slice(0, 300)));
+  page.on("console", (m) => {
+    if (m.type() === "error") console.error("CONSOLE:", m.text().slice(0, 300));
+  });
 
   const errCount = await preflight(page, ctx);
   t0 = Date.now();
