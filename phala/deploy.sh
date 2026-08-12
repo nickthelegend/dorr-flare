@@ -55,7 +55,24 @@ say "2 · render compose"
 envsubst < "$(dirname "$0")/docker-compose.yml" > /tmp/dorr-compose.yml
 echo "  $(wc -l < /tmp/dorr-compose.yml) lines"
 
-say "3 · create the CVM — billing starts here"
+say "3 · resolve a valid dstack image"
+# Image names carry a build suffix (dstack-0.5.10-4c9bd024) and rotate, so they
+# cannot be hard-coded. A stale name fails the create with a 400 — harmless, but
+# it wastes a window you may be paying attention during. Ask the node.
+export DSTACK_IMAGE
+DSTACK_IMAGE=$(curl -fsS -H "X-API-Key: $PHALA_API_KEY" "$API/teepods/$TEEPOD_ID/images" |
+  python3 -c "
+import sys, json, re
+names = [i['name'] for i in json.load(sys.stdin)]
+# newest plain dstack build: no -dev (unstable), no -nvidia (GPU tier, pricier)
+ok = [n for n in names if n.startswith('dstack-') and '-dev-' not in n and 'nvidia' not in n]
+def key(n):
+    m = re.match(r'dstack-(\\d+)\\.(\\d+)\\.(\\d+)', n)
+    return tuple(int(x) for x in m.groups()) if m else (0, 0, 0)
+print(sorted(ok, key=key)[-1])")
+echo "  $DSTACK_IMAGE"
+
+say "4 · create the CVM — billing starts here"
 python3 - > /tmp/dorr-payload.json <<'PY'
 import json, os
 print(json.dumps({
@@ -71,7 +88,7 @@ print(json.dumps({
     "memory": int(os.environ["MEM"]),
     "disk_size": int(os.environ["DISK"]),
     "teepod_id": int(os.environ["TEEPOD_ID"]),
-    "image": "dstack-0.3.5",
+    "image": os.environ["DSTACK_IMAGE"],
 }))
 PY
 
@@ -80,6 +97,6 @@ curl -fsS -X POST "$API/cvms/from_cvm_configuration" \
   --data @/tmp/dorr-payload.json | tee /tmp/phala-cvm.json |
   python3 -c 'import sys,json; d=json.load(sys.stdin); print("  app_id:", d.get("app_id") or d.get("hosted",{}).get("app_id")); print("  status:", d.get("status"))'
 
-say "4 · next"
+say "5 · next"
 echo "  wait ~2 min, then ./verify.sh   (proves hardware + all three tenants)"
 echo "  then                ./teardown.sh (stops the meter)"

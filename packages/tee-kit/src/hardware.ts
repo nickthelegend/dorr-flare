@@ -96,8 +96,18 @@ export async function getHardwareQuote(payloadHash?: Hex): Promise<HardwareQuote
 
   if (mode === "dstack") {
     const socket = existsSync(DSTACK_SOCKET) ? DSTACK_SOCKET : TAPPD_SOCKET;
-    // dstack renamed the RPC between releases; try the current name first.
-    for (const rpc of ["/prpc/Dstack.GetQuote?json", "/prpc/Tappd.TdxQuote?json"]) {
+    // dstack renamed this RPC across releases and the socket answers 404 for the
+    // wrong name, so probe the known spellings newest-first. Measured on a live
+    // 0.5.9 CVM: the 0.3.x names both 404, which is why the failures are now
+    // reported instead of swallowed — "no quote" and "wrong method name" are
+    // very different problems and the note has to tell them apart.
+    const attempts: string[] = [];
+    for (const rpc of [
+      "/prpc/GetQuote?json",           // dstack 0.5.x
+      "/prpc/Worker.GetQuote?json",
+      "/prpc/Dstack.GetQuote?json",    // 0.4.x
+      "/prpc/Tappd.TdxQuote?json",     // 0.3.x tappd
+    ]) {
       try {
         const raw = await socketPost(socket, rpc, { report_data: reportData });
         const j = JSON.parse(raw) as { quote?: string; event_log?: string };
@@ -114,14 +124,15 @@ export async function getHardwareQuote(payloadHash?: Hex): Promise<HardwareQuote
             "Intel TDX quote from the dstack guest agent. report_data is the batch payload hash, so the " +
             "hardware signature covers this exact batch — not merely the fact that an enclave was running.",
         };
-      } catch {
-        /* try the next RPC name */
+      } catch (e) {
+        attempts.push(`${rpc} → ${String(e).slice(0, 90)}`);
       }
     }
     return {
       available: false,
       mode,
       note: `dstack socket present at ${socket} but no quote could be fetched — reporting that rather than a self-declared digest.`,
+      attempts,
     };
   }
 

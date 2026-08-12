@@ -105,3 +105,42 @@ mistake is forgetting `teardown.sh`.
 - **The seed comes from the environment**, not sealed to the hardware. That
   keeps the registered addresses valid, which is worth more this week — but it
   means the host operator could read it. Do not claim hardware-sealed custody.
+
+---
+
+## Run log — first real deploy (2026-08-11)
+
+Two CVMs created and destroyed on prod5. Total spend: **under 10 cents.**
+
+**Proven:**
+
+| | |
+|---|---|
+| Deploy → verify → destroy cycle | works end to end, `tdx.small` @ $0.058/hr |
+| Enclave detects the TEE | `/tee/health` → `"tee":"dstack"` (it is `"none"` on Heroku) |
+| **All three tenant signers unchanged** | dorr `0xE5f41AE4…`, hadal `0x24105E55…`, molfi `0x8D642631…` — the seed carried over, so every on-chain registration still resolves. This was the one failure that would have wasted the window. |
+| Cross-tenant isolation | intact on hardware |
+
+**Not proven — the quote itself.** `hardwareAttestation.available` is still `false`.
+All four RPC spellings 404, and they return **HTML**, not a JSON-RPC error:
+
+```
+/prpc/GetQuote?json         → 404 <!DOCTYPE html>
+/prpc/Worker.GetQuote?json  → 404 <!DOCTYPE html>
+/prpc/Dstack.GetQuote?json  → 404 <!DOCTYPE html>
+/prpc/Tappd.TdxQuote?json   → 404 <!DOCTYPE html>
+```
+
+An HTML body means `/var/run/dstack.sock` is not serving the guest-agent RPC that
+`hardware.ts` expects on this image — not that the method name is merely wrong.
+Note the CLI auto-selected `dstack-dev-0.5.9` (`is_dev: true`); pinning a
+non-dev image is the first thing to try.
+
+**The next step is a discovery run, not another guess.** Add a temporary endpoint
+that proxies an arbitrary path to the socket, deploy once, and ask the socket what
+it actually serves (`/`, `/prpc/Info`, `/prpc`). One CVM, a few cents, and the
+answer instead of a fifth guess.
+
+The behaviour under failure is correct and worth keeping: it reports
+`available:false` with the attempts rather than falling back to a self-declared
+image digest — which is precisely what the competing entry does.
