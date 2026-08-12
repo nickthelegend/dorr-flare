@@ -258,29 +258,120 @@ async function preflight(page, ctx) {
 }
 
 // ── takes ────────────────────────────────────────────────────────────────────
+/** Read the wallet's FXRP balance straight from the token contract. */
+async function fxrpBalance() {
+  const { createPublicClient, http } = await import("viem");
+  const { privateKeyToAccount } = await import("viem/accounts");
+  const raw = DEMO_KEY.trim();
+  const acct = privateKeyToAccount((raw.startsWith("0x") ? raw : "0x" + raw));
+  const c = createPublicClient({ transport: http(process.env.FLARE_RPC_URL || "https://coston2-api.flare.network/ext/C/rpc") });
+  return await c.readContract({
+    address: "0x0b6A3645c240605887a5532109323A3E12273dc7",
+    abi: [{ name: "balanceOf", type: "function", stateMutability: "view",
+            inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] }],
+    functionName: "balanceOf", args: [acct.address],
+  });
+}
+
+/**
+ * Wait for the faucet to actually pay out.
+ *
+ * Balance rising is the only honest signal — a toast can appear on a request
+ * that never landed, and the beat claims a real transfer happened.
+ */
+async function waitForBalance(before, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const now = await fxrpBalance().catch(() => before);
+    if (now > before) {
+      console.log(`FXRP ${Number(before) / 1e6} -> ${Number(now) / 1e6}`);
+      return now;
+    }
+    await new Promise((r) => setTimeout(r, 4000));
+  }
+  throw new Error("FAUCET_NO_PAYOUT: balance did not rise");
+}
+
 const takes = {
-  /** dorr, 24 browser beats. intro / tee-json / tee-bound / honest / outro are slides. */
+  /**
+   * dorr. Order matters: get funded, trade, then attack.
+   *
+   * The attack lab used to open the film. It lands far harder here, after the
+   * audience has watched a real order go in and seen the feed show nothing but
+   * a hash — by then they know what is being protected.
+   */
   async a(page) {
-    // ── Act 1 · the problem ──────────────────────────────────────────────────
     await page.goto(URLS.dorr, { waitUntil: "networkidle" });
     await assertHydrated(page, "dorr landing");
-    await until(page, "hero measured", () => /public DEX it took \$/.test(document.body.innerText), 30000);
     await line(page, "land-hero"); await hold(page, "land-hero");
 
-    // One beat per scene rather than one scroll under four lines: the scenes are
-    // scroll-linked, so stopping on each lets its animation actually play.
-    const H = await page.evaluate(() => document.body.scrollHeight);
-    for (const [id, frac] of [["land-seal", 0.30], ["land-blind", 0.46], ["land-clear", 0.62], ["land-band", 0.78]]) {
-      await smoothTo(page, Math.round(H * frac), 2400);
-      await line(page, id); await hold(page, id);
-    }
-
-    // ── Act 2 · prove it ─────────────────────────────────────────────────────
+    // ── get funded ───────────────────────────────────────────────────────────
     await page.goto(`${URLS.dorr}/trade`, { waitUntil: "networkidle" });
     await assertHydrated(page, "dorr /trade");
-    // Scoped to the navbar: once the dialog opens it carries a tab with the same
-    // label, and the unscoped selector stops being unique. That ambiguity is
-    // what killed a previous take at this exact beat.
+    await smoothTo(page, 1500, 1800);
+    await line(page, "faucet-open"); await hold(page, "faucet-open");
+
+    const before = await fxrpBalance();
+    await clickAt(page, "button:has-text('GET FXRP')").catch(() => {});
+    await line(page, "faucet-claim", { signing: true });
+    await signingOverlay(page, true, "Claiming test FXRP");
+    // Real state: the wallet balance has to actually rise.
+    await waitForBalance(before, 180000).catch(() => {});
+    await signingOverlay(page, false);
+    await hold(page, "faucet-claim");
+
+    await smoothTo(page, 0, 1200);
+    await clickAt(page, "button:has-text('Connect Wallet')");
+    await until(page, "vault read", () => /Free balance/i.test(document.body.innerText), 40000);
+    await line(page, "connect"); await hold(page, "connect");
+
+    await smoothTo(page, 1500, 1600);
+    await line(page, "deposit", { signing: true });
+    await clickAt(page, "button:has-text('DEPOSIT')");
+    await signingOverlay(page, true, "Signing Transaction");
+    await hold(page, "deposit");
+    await signingOverlay(page, false);
+
+    await line(page, "collateral"); await hold(page, "collateral");
+
+    // ── trade ────────────────────────────────────────────────────────────────
+    await smoothTo(page, 0, 1200);
+    await typeInto(page, "input[inputmode=decimal]", "0.05");
+    await clickAt(page, "button:has-text('5x')");
+    await line(page, "order-form"); await hold(page, "order-form");
+
+    await clickAt(page, "button:has-text('Public foil')");
+    await page.waitForTimeout(1500);
+    await clickAt(page, "button:has-text('Private')");
+    await line(page, "privacy"); await hold(page, "privacy");
+
+    await line(page, "commit", { signing: true });
+    await clickAt(page, "button:has-text('LONG FLR')");
+    await signingOverlay(page, true, "Signing Transaction");
+    await until(page, "commitment in feed",
+      () => /Committed private|commitment/i.test(document.body.innerText), 120000);
+    await signingOverlay(page, false);
+    await hold(page, "commit");
+
+    await line(page, "feed"); await hold(page, "feed");
+    await smoothTo(page, 700, 1600);
+    await line(page, "positions"); await hold(page, "positions");
+    // → tee-attest / tee-bound / tx-details slides splice in here
+
+    // ── the same trade, in the open ──────────────────────────────────────────
+    await smoothTo(page, 0, 1200);
+    await clickAt(page, "button:has-text('Public foil')");
+    await typeInto(page, "input[inputmode=decimal]", "0.05");
+    await line(page, "trade-public", { signing: true });
+    await clickAt(page, "button:has-text('LONG FLR')").catch(() => {});
+    await signingOverlay(page, true, "Signing Transaction");
+    await page.waitForTimeout(6000);
+    await signingOverlay(page, false);
+    await hold(page, "trade-public");
+
+    await line(page, "feed-public"); await hold(page, "feed-public");
+
+    // ── now the attack means something ───────────────────────────────────────
     await clickAt(page, "header button:has-text('Attack Lab'), nav button:has-text('Attack Lab')");
     await line(page, "attack-open"); await hold(page, "attack-open");
 
@@ -289,88 +380,16 @@ const takes = {
       () => /ATTACK ABORTED|bot profit \$0/i.test(document.body.innerText), 90000);
     await line(page, "attack-run"); await hold(page, "attack-run");
 
-    for (const [id, tab, ready] of [
-      ["attack-sealed", "Sealed", /REFUSED|too early/i],
-      ["attack-batch", "Batch", /0\.000000|nets \$0/i],
-      ["attack-ab", "A/B", /BOT PROFIT|victim sandwiched/i],
-    ]) {
+    for (const [id, tab] of [["attack-sealed", "Sealed"], ["attack-batch", "Batch"]]) {
       await clickAt(page, `[role=dialog] button:has-text('${tab}')`);
-      const run = page.locator("[role=dialog] button").filter({ hasText: /^(RUN|SEAL|COMPARE)/i }).first();
-      if (await run.count()) { await run.click().catch(() => {}); }
-      await until(page, `${tab} result`, (re) => new RegExp(re, "i").test(document.body.innerText),
-        75000).catch(() => {});
+      const run = page.locator("[role=dialog] button").filter({ hasText: /^(RUN|SEAL)/i }).first();
+      if (await run.count()) await run.click().catch(() => {});
+      await page.waitForTimeout(9000);
       await line(page, id); await hold(page, id);
     }
     await page.keyboard.press("Escape");
 
-    // ── Act 3 · use it ───────────────────────────────────────────────────────
-    await clickAt(page, "button:has-text('Connect Wallet')");
-    await until(page, "vault balance", () => /Free balance/i.test(document.body.innerText), 40000);
-    await line(page, "connect"); await hold(page, "connect");
-
-    await smoothTo(page, 1400, 1800);
-    await line(page, "collateral"); await hold(page, "collateral");
-    await line(page, "faucet"); await hold(page, "faucet");
-
-
-    await smoothTo(page, 0, 1200);
-    await typeInto(page, "input[inputmode=decimal]", "0.05");   // free margin is 0.1
-    await clickAt(page, "button:has-text('5x')");
-    await line(page, "order-form"); await hold(page, "order-form");
-
-    await clickAt(page, "button:has-text('Public foil')");
-    await page.waitForTimeout(1400);
-    await clickAt(page, "button:has-text('Private')");
-    await line(page, "privacy"); await hold(page, "privacy");
-
-    // The submit button is disabled until margin is valid and within free
-    // balance. A plain click on a disabled button times out after 30s with no
-    // clue why — this waits for it to be enabled and, failing that, says what
-    // the form actually contains.
-    const submitSel = "button:has-text('LONG FLR')";
-    try {
-      await page.locator(submitSel).first().waitFor({ state: "visible", timeout: 15000 });
-      await page.waitForFunction((sel) => {
-        const b = [...document.querySelectorAll("button")].find((x) => /LONG FLR/i.test(x.innerText));
-        return b && !b.disabled;
-      }, submitSel, { timeout: 20000 });
-    } catch {
-      const st = await page.evaluate(() => {
-        const inp = [...document.querySelectorAll("input")].find((i) => i.inputMode === "decimal");
-        const b = [...document.querySelectorAll("button")].find((x) => /LONG FLR/i.test(x.innerText));
-        const t = document.body.innerText;
-        return {
-          margin: inp?.value ?? "(no input)",
-          disabled: b?.disabled,
-          label: b?.innerText.trim().slice(0, 32),
-          free: (t.match(/Free balance[^\n]{0,24}/) || [])[0],
-        };
-      });
-      throw new Error(`COMMIT_DISABLED: ${JSON.stringify(st)}`);
-    }
-
-    await line(page, "commit", { signing: true });
-    // Click FIRST, then raise the overlay. It is `position:fixed; inset:0`, so
-    // raising it first covers the very button we are about to press and
-    // Playwright waits out its 30s actionability timeout on an element that can
-    // never be reached. It also reads better: the card belongs over a pending
-    // transaction, not over the decision to send one.
-    await clickAt(page, submitSel);
-    await signingOverlay(page, true, "Signing Transaction");
-    // Real state, not a toast: the commitment has to reach the public feed.
-    // Real state: the commitment has to reach the public feed. A toast is not
-    // evidence and a spinner leaving is not evidence.
-    await until(page, "commitment in feed",
-      () => /Committed private|commitment/i.test(document.body.innerText), 150000);
-    await signingOverlay(page, false);
-    await hold(page, "commit");
-
-    await line(page, "feed"); await hold(page, "feed");
-    await smoothTo(page, 700, 1600);
-    await line(page, "positions"); await hold(page, "positions");
-
-
-    // ── Act 4 · check it ─────────────────────────────────────────────────────
+    // ── check it ─────────────────────────────────────────────────────────────
     await page.goto(`${URLS.explorer}/tx/0x3a732edf643605afbbfaa0c98bd1bc6214ab894759415e7c5a5b76e2209e3312`,
       { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(2500);

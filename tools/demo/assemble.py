@@ -64,7 +64,12 @@ def cut(take, tmp):
         if span > narr + 0.25:
             # Ramp the footage down to the narration length rather than cutting
             # it — the scroll keeps moving, it just moves faster.
-            speed = span / narr
+            # Cap the ramp at 2.1x — the value that lands this cut at ~7 minutes. Beyond that the cursor teleports and a
+            # scroll reads as a jump-cut — and the footage worth watching (a
+            # settlement landing, a feed filling in) is exactly the footage
+            # these long spans contain. Anything above the cap keeps its own
+            # pace and the beat simply runs longer than its line.
+            speed = min(2.1, span / narr)
             vf = f"setpts=PTS/{speed:.6f},fps=30"
             pad = 0.0
         else:
@@ -84,6 +89,20 @@ def cut(take, tmp):
               f"{'ramp x%.2f' % (span/narr) if span > narr + .25 else 'pad %.1fs' % pad}"
               f"{'  [SIGNING]' if b['signing'] else ''}")
     return clips
+
+def live_attestation():
+    """Read the real quote for the slides. Typeset from the machine, not typed."""
+    import urllib.request
+    url = ("https://59b7ffee2f565bdebf0ff4b076b0f1c0ba4152e4-8795"
+           ".dstack-pha-prod5.phala.network/tee/attestation")
+    try:
+        with urllib.request.urlopen(url, timeout=25) as r:
+            h = json.load(r)["hardwareAttestation"]
+        return {"head": h["quote"][:40], "hash": h.get("quoteHash", ""),
+                "report": h.get("reportData", "")}
+    except Exception as e:
+        raise SystemExit(f"SLIDE_DATA_UNAVAILABLE: {e} — the CVM must be up to cut the TEE panels")
+
 
 def title_card(path, lines, secs, tmp):
     """Kinetic type, rendered frame by frame.
@@ -129,30 +148,202 @@ def title_card(path, lines, secs, tmp):
        path, "-loglevel", "error")
 
 
+def draw_lock(d, cx, cy, scale, alpha, bg):
+    """The dorr mark, drawn.
+
+    A padlock whose shackle deliberately does not close — the gap is the product
+    in one shape: the order is sealed, and the venue is the thing left outside.
+    Redrawn here rather than rasterised from the SVG so it can be animated: the
+    shackle sweeps closed as the mark lands.
+    """
+    def mix(col):
+        return tuple(int(bg[k] + (col[k] - bg[k]) * alpha) for k in range(3))
+    BLUE, LIGHT, WHITE = (44, 107, 255), (122, 166, 255), (255, 255, 255)
+    S = scale
+    # body
+    d.rounded_rectangle([cx - 88 * S, cy - 8 * S, cx + 88 * S, cy + 112 * S],
+                        radius=int(34 * S), fill=mix(BLUE))
+    # keyhole
+    d.ellipse([cx - 15 * S, cy + 26 * S, cx + 15 * S, cy + 56 * S], fill=mix(WHITE))
+    d.polygon([(cx - 9 * S, cy + 52 * S), (cx + 9 * S, cy + 52 * S),
+               (cx + 6 * S, cy + 86 * S), (cx - 6 * S, cy + 86 * S)], fill=mix(WHITE))
+
+
+def draw_shackle(d, cx, cy, scale, alpha, bg, sweep):
+    """The shackle, swept 0→1. Stops short of closing on the left, always."""
+    def mix(col):
+        return tuple(int(bg[k] + (col[k] - bg[k]) * alpha) for k in range(3))
+    S = scale
+    box = [cx - 44 * S, cy - 82 * S, cx + 44 * S, cy + 6 * S]
+    # 200°..340° is the closed arc; the left leg is cut short by design
+    start, end = 190, 190 + int(155 * sweep)
+    if end > start:
+        d.arc(box, start, end, fill=mix((122, 166, 255)), width=int(24 * S))
+
+
+def logo_card(path, secs, tmp):
+    """Animated intro: the mark draws itself, then the wordmark rises."""
+    from PIL import Image, ImageDraw, ImageFont
+    W, H, FPS = 1440, 900, 30
+    BG = (11, 18, 32)
+    frames = int(secs * FPS)
+    fdir = os.path.join(tmp, "f_logo"); os.makedirs(fdir, exist_ok=True)
+    FONT = "/System/Library/Fonts/Helvetica.ttc"
+    f_word = ImageFont.truetype(FONT, 92)
+    f_sub = ImageFont.truetype(FONT, 34)
+    f_tag = ImageFont.truetype(FONT, 24)
+    ease = lambda p: 1 - (1 - p) ** 3
+
+    for n in range(frames):
+        t = n / FPS
+        img = Image.new("RGB", (W, H), BG)
+        d = ImageDraw.Draw(img)
+        out = max(0.0, min(1.0, (secs - 0.6 - t) / 0.45))
+
+        # 0.0–1.1s the body lands and the shackle sweeps closed
+        p_lock = max(0.0, min(1.0, (t - 0.15) / 0.85))
+        if p_lock > 0:
+            a = ease(p_lock) * out
+            cy = 300 + 40 * (1 - ease(p_lock))
+            draw_shackle(d, W / 2, cy, 1.05, a, BG, ease(p_lock))
+            draw_lock(d, W / 2, cy, 1.05, a, BG)
+
+        for i, (txt, f, dy, col, t0) in enumerate([
+            ("dorr", f_word, 190, (255, 255, 255), 1.05),
+            ("Private perps on Flare", f_sub, 300, (122, 166, 255), 1.45),
+            ("Coston2 testnet  ·  FXRP margin  ·  Intel TDX", f_tag, 360, (150, 163, 184), 1.85),
+        ]):
+            p_in = max(0.0, min(1.0, (t - t0) / 0.7))
+            if p_in <= 0:
+                continue
+            a = ease(p_in) * out
+            if a <= 0.01:
+                continue
+            y = 300 + dy + 26 * (1 - ease(p_in))
+            w = d.textbbox((0, 0), txt, font=f)[2]
+            d.text(((W - w) / 2, y), txt, font=f,
+                   fill=tuple(int(BG[k] + (col[k] - BG[k]) * a) for k in range(3)))
+        img.save(os.path.join(fdir, f"{n:05d}.png"))
+
+    sh("ffmpeg", "-y", "-framerate", str(FPS), "-i", os.path.join(fdir, "%05d.png"),
+       "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
+       path, "-loglevel", "error")
+
+
+def data_card(path, heading, rows, secs, tmp, highlight=None):
+    """A key/value panel for real data — the attestation and the settlement tx.
+
+    The quote is 5,010 bytes and unreadable at video bitrate, but its meaning
+    lives in three fields. Those get typeset in monospace at a size that survives
+    compression, with the one that matters picked out in green. Rows arrive in
+    sequence so the eye is led rather than dumped on.
+    """
+    from PIL import Image, ImageDraw, ImageFont
+    W, H, FPS = 1440, 900, 30
+    BG, PANEL = (11, 18, 32), (17, 26, 44)
+    frames = int(secs * FPS)
+    fdir = os.path.join(tmp, "f_" + os.path.basename(path).replace(".mp4", ""))
+    os.makedirs(fdir, exist_ok=True)
+    HEL = "/System/Library/Fonts/Helvetica.ttc"
+    MONO = "/System/Library/Fonts/Menlo.ttc"
+    f_h = ImageFont.truetype(HEL, 44)
+    f_k = ImageFont.truetype(HEL, 23)
+    f_v = ImageFont.truetype(MONO, 23)
+    ease = lambda p: 1 - (1 - p) ** 3
+
+    for n in range(frames):
+        t = n / FPS
+        img = Image.new("RGB", (W, H), BG)
+        d = ImageDraw.Draw(img)
+        out = max(0.0, min(1.0, (secs - 0.6 - t) / 0.45))
+
+        p_h = max(0.0, min(1.0, (t - 0.2) / 0.6))
+        if p_h > 0:
+            a = ease(p_h) * out
+            y = 120 + 22 * (1 - ease(p_h))
+            d.text((110, y), heading, font=f_h,
+                   fill=tuple(int(BG[k] + (255 - BG[k]) * a) for k in range(3)))
+
+        top = 230
+        for i, (k, v) in enumerate(rows):
+            t0 = 0.7 + i * 0.42
+            p = max(0.0, min(1.0, (t - t0) / 0.55))
+            if p <= 0:
+                continue
+            a = ease(p) * out
+            if a <= 0.01:
+                continue
+            y = top + i * 78 + 20 * (1 - ease(p))
+            d.rounded_rectangle([100, y - 14, W - 100, y + 52], radius=12,
+                                fill=tuple(int(BG[j] + (PANEL[j] - BG[j]) * a) for j in range(3)))
+            d.text((128, y - 6), k, font=f_k,
+                   fill=tuple(int(BG[j] + (148 - BG[j]) * a) for j in range(3)))
+            col = (52, 211, 153) if (highlight and k == highlight) else (226, 232, 240)
+            d.text((128, y + 22), v, font=f_v,
+                   fill=tuple(int(BG[j] + (col[j] - BG[j]) * a) for j in range(3)))
+        img.save(os.path.join(fdir, f"{n:05d}.png"))
+
+    sh("ffmpeg", "-y", "-framerate", str(FPS), "-i", os.path.join(fdir, "%05d.png"),
+       "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
+       path, "-loglevel", "error")
+
+
 def main():
     tmp = tempfile.mkdtemp(prefix="dorr-cut-")
     all_clips = []
 
     intro = os.path.join(tmp, "intro.mp4")
-    title_card(intro, [
-        ("dorr  ·  hadal  ·  molfi", 62, -150, (255, 255, 255)),
-        ("Confidential compute on Flare", 34, -50, (157, 180, 255)),
-        ("Coston2 testnet  ·  three submissions", 24, 30, (127, 142, 163)),
-    ], 5.0, tmp)
+    logo_card(intro, DUR.get("intro", 17.0) + 0.6, tmp)
     all_clips.append(intro)
 
-    for take in ("a", "b", "c"):
-        if not os.path.exists(os.path.join(ROOT, f"beat-log-{take}.txt")):
-            print(f"take {take}: no log, skipped"); continue
-        print(f"take {take}:")
-        all_clips += cut(take, tmp)
+    # The app footage, split so the attestation panels land where the narration
+    # puts them — straight after the order, not bolted onto the end.
+    clips = cut("a", tmp) if os.path.exists(os.path.join(ROOT, "beat-log-a.txt")) else []
+    ids = [r["id"] for r in beats("a")] if clips else []
+
+    mid = {}
+    live = live_attestation()
+    mid["tee-attest"] = lambda o: data_card(o, "Intel TDX attestation — live", [
+        ("enclave", "Phala dstack CVM  ·  prod5  ·  tdx.small"),
+        ("hardwareAttestation.available", "true"),
+        ("quote", live["head"] + "…   (5,010 bytes)"),
+        ("quoteHash", live["hash"][:46] + "…"),
+    ], DUR["tee-attest"] + 0.6, tmp)
+    mid["tee-bound"] = lambda o: data_card(o, "Bound to this settlement", [
+        ("report_data", live["report"][:46] + "…"),
+        ("= keccak256(epoch, root, price, count)", "the batch payload hash"),
+        ("what that means", "the CPU signed THIS batch, not \"an enclave exists\""),
+        ("competing entry", "process.env.IMAGE_DIGEST  ·  no quote fetched"),
+    ], DUR["tee-bound"] + 0.6, tmp, highlight="report_data")
+    mid["tx-details"] = lambda o: data_card(o, "DorrBatchSettlement — on-chain", [
+        ("tx", "0x3a732edf…09e3312"),
+        ("contract", "0x047478DE7d2ed6B41dEFC14223764411288Db845"),
+        ("checks", "FTSO re-read  ·  ±200 bps band  ·  enclave quote"),
+        ("reverts if", "clearing price disagrees with the oracle"),
+    ], DUR["tx-details"] + 0.6, tmp)
+
+    for i, c in enumerate(clips):
+        all_clips.append(c)
+        after = ids[i] if i < len(ids) else None
+        if after == "positions":
+            for sid in ("tee-attest", "tee-bound", "tx-details"):
+                o = os.path.join(tmp, f"{sid}.mp4"); mid[sid](o); all_clips.append(o)
+
+    honest = os.path.join(tmp, "honest.mp4")
+    title_card(honest, [
+        ("What is not proven", 46, -170, (255, 255, 255)),
+        ("v1 runs a trusted operator for matching", 26, -80, (203, 213, 225)),
+        ("liquidity is a vAMM, not an external book", 26, -30, (203, 213, 225)),
+        ("testnet  ·  unaudited", 26, 20, (203, 213, 225)),
+    ], DUR.get("honest", 18.0) + 0.6, tmp)
+    all_clips.append(honest)
 
     outro = os.path.join(tmp, "outro.mp4")
     title_card(outro, [
         ("Thanks for watching", 58, -110, (255, 255, 255)),
         ("github.com/nickthelegend/dorr-flare", 28, -10, (157, 180, 255)),
         ("every claim is checkable on-chain", 22, 60, (127, 142, 163)),
-    ], 5.5, tmp)
+    ], DUR.get("outro", 14.0) + 0.6, tmp)
     all_clips.append(outro)
 
     # Concat needs identical streams; the two cards have no audio, so give them
