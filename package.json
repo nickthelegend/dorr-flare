@@ -17,5 +17,8 @@
     "test:contracts": "forge test --root contracts",
     "typecheck": "bun run --cwd apps/web typecheck",
     "gen:wallet": "bun run tools/scripts/gen-wallet.ts"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1"
   }
 }

@@ -93,3 +93,53 @@ animation look broken. Explorer pages get the same treatment.
   hardware" — which is correct behaviour and exactly why it must be filmed now.
 - **The public Coston2 RPC 429s** under load. If a signing beat times out, that
   is a real failure: fix and re-record rather than trimming it out.
+
+---
+
+# RECORDING STATUS (last run)
+
+| take | beats | footage | verdict |
+|---|---|---|---|
+| **C — molfi** | 5 of 6 | `raw-take-c.mp4`, 88.9s, real content at 10/40/70/95% | **REJECT** — `c-bid` missing |
+| **A — dorr** | 4 of 13 | partial | **REJECT** — blocked at the Attack Lab dialog |
+| **B — hadal** | 0 | none | not attempted |
+
+## Why C is rejected
+
+`c-bid` is a **signing beat** — "place a sealed bid, ciphertext leaves the
+browser". It was never written into the driver because `SealedBidBook.sealBid`
+needs a funded wallet and molfi's own bid flow, which was not set up. Everything
+else about take C is good: 5 beats in order, no gaps, real frames throughout,
+zero console errors.
+
+Cutting it as-is would ship a molfi video where nobody ever places a bid — the
+one beat that shows molfi *doing* something rather than displaying something.
+
+## Why A is rejected
+
+Blocked at `a-attack-run`. The Attack Lab dialog opens (`a-attack-open` logs),
+then `locator.boundingBox` times out on the run button. Two label fixes already
+landed and neither was it:
+
+- the navbar trigger is `Attack Lab`, title case — **not** `ATTACK LAB`
+- the run control's DOM text is `Run attack` — the uppercase is CSS, and
+  `:has-text` matches the DOM, not the rendered transform
+
+The remaining suspect is selector ambiguity: the dialog contains its own tab
+also labelled "Attack Lab", so `button:has-text('Attack Lab')` is no longer
+unique once the dialog is open. Next step is to scope the trigger to the navbar
+and the run control to the active tab panel, then re-run.
+
+## Fixed along the way (all verified by a real run)
+
+- **`NOT_HYDRATED` guard** — names a bot checkpoint or failed load instead of
+  surfacing as an unrelated `boundingBox` timeout 30s later on the next click.
+- Guard checks interactivity **and** copy, not buttons alone — molfi's landing
+  is entirely links and legitimately has zero buttons.
+- `/trade` is client-rendered (~12 words of SSR text); it now waits for the real
+  terminal (`LIVE CHART` + a canvas) rather than a word count.
+- Challenge-tolerant navigation and a non-automation browser fingerprint, after
+  my own curl wait-loops tripped Vercel's bot mitigation and it then served the
+  checkpoint to the recording browser.
+- Wait-loops must not poll `dorr-flare.vercel.app`. That is what caused the
+  mitigation in the first place.

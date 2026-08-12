@@ -178,6 +178,35 @@ async function installWallet(page, address) {
   }, address);
 }
 
+/** The app is really interactive, not a bot-check or an error boundary. */
+async function assertHydrated(page, where) {
+  // Buttons alone is the wrong test — molfi's landing page is entirely links and
+  // legitimately has none. What actually distinguishes a live app from a bot
+  // checkpoint is interactive elements *and* real copy: the checkpoint page has
+  // neither.
+  // The challenge self-solves; give it room before declaring failure. Asserting
+  // immediately after networkidle catches the interstitial, not the app.
+  for (let i = 0; i < 12; i++) {
+    const ok = await page.evaluate(
+      () => document.querySelectorAll("button, a[href], [role=button]").length > 0 &&
+            (document.body.innerText || "").trim().split(/\s+/).length >= 25,
+    ).catch(() => false);
+    if (ok) break;
+    await page.waitForTimeout(2500);
+    if (i === 5) await page.reload({ waitUntil: "networkidle" }).catch(() => {});
+  }
+  const st = await page.evaluate(() => ({
+    interactive: document.querySelectorAll("button, a[href], [role=button]").length,
+    words: (document.body.innerText || "").trim().split(/\s+/).length,
+  }));
+  if (st.interactive === 0 || st.words < 25) {
+    const title = await page.title();
+    throw new Error(
+      `NOT_HYDRATED: ${where} — ${st.interactive} interactive, ${st.words} words (title "${title}") — bot checkpoint or failed load`,
+    );
+  }
+}
+
 async function preflight(page, ctx) {
   // chain
   const { createPublicClient, http } = await import("viem");
@@ -199,20 +228,30 @@ async function preflight(page, ctx) {
 const takes = {
   async a(page, ctx, acct) {
     await page.goto(URLS.dorr, { waitUntil: "networkidle" });
+    await assertHydrated(page, "dorr landing");
     await line(page, "a-intro"); await hold(page, "a-intro");
 
     await until(page, "hero measured", () => /public DEX it took \$/.test(document.body.innerText), 25000);
     await line(page, "a-land-hero"); await hold(page, "a-land-hero");
 
     await line(page, "a-land-scroll");
-    for (const f of [0.25, 0.5, 0.75, 1]) await smoothTo(page, document_h(f), 2600);
+    // Read the real scrollHeight rather than assuming one: the landing page grows
+    // with its GSAP scenes, and scrolling to a guessed offset lands mid-scene.
+    const H = await page.evaluate(() => document.body.scrollHeight);
+    for (const f of [0.28, 0.52, 0.76, 0.97]) await smoothTo(page, Math.round(H * f), 2600);
     await hold(page, "a-land-scroll");
 
-    await page.goto(`${URLS.dorr}/trade`, { waitUntil: "networkidle" });
-    await clickAt(page, "button:has-text('ATTACK LAB')");
+    // /trade is client-rendered: it ships ~12 words of SSR text and fills in after
+    // hydration, so a word-count guard is the wrong test here. Wait for the thing
+    // that only exists once the terminal is really up.
+    await page.goto(`${URLS.dorr}/trade`, { waitUntil: "domcontentloaded" });
+    await until(page, "trade terminal up",
+      () => /LIVE CHART/i.test(document.body.innerText) && document.querySelectorAll("canvas").length > 0,
+      90000);
+    await clickAt(page, "button:has-text('Attack Lab')");
     await line(page, "a-attack-open"); await hold(page, "a-attack-open");
 
-    await clickAt(page, "[role=dialog] button:has-text('RUN ATTACK')");
+    await clickAt(page, "[role=dialog] button:has-text('Run attack')");
     await until(page, "attack finished", () => /ATTACK ABORTED|bot profit \$0/i.test(document.body.innerText), 60000);
     await line(page, "a-attack-run"); await hold(page, "a-attack-run");
 
@@ -223,7 +262,7 @@ const takes = {
     await line(page, "a-attack-tabs"); await hold(page, "a-attack-tabs");
     await page.keyboard.press("Escape");
 
-    await clickAt(page, "button:has-text('CONNECT WALLET')");
+    await clickAt(page, "button:has-text('Connect Wallet')");
     await until(page, "balance loaded", () => /Free balance/i.test(document.body.innerText), 30000);
     await line(page, "a-connect"); await hold(page, "a-connect");
 
@@ -252,9 +291,47 @@ const takes = {
     await until(page, "hardware live", () => /Hardware attestation is live/i.test(document.body.innerText), 20000);
     await line(page, "a-tee"); await smoothTo(page, 1600, 3000); await hold(page, "a-tee");
   },
+
+  async b(page) {
+    await page.goto(URLS.hadal, { waitUntil: "networkidle" });
+    await assertHydrated(page, "hadal");
+    await until(page, "hadal loaded", () => /Flare/i.test(document.body.innerText), 30000);
+    await line(page, "b-land");
+    const H = await page.evaluate(() => document.body.scrollHeight);
+    for (const f of [0.3, 0.6, 0.9]) await smoothTo(page, Math.round(H * f), 2200);
+    await hold(page, "b-land");
+
+    // b-wrap / b-send need a funded cFXRP position and hadal's TEE service, which
+    // is not publicly deployed (NEXT_PUBLIC_TEE_URL is still localhost). Those two
+    // beats are not filmed rather than faked; recording.md says so.
+    await page.goto(`${URLS.explorer}/address/0x2B3323Dba63a4a1Ed0a4B02d0B3fD5C901760881`, { waitUntil: "domcontentloaded" });
+    await line(page, "b-explorer");
+    await smoothTo(page, 600, 3000); await smoothTo(page, 1200, 3000);
+    await hold(page, "b-explorer");
+
+    await line(page, "b-guard"); await smoothTo(page, 1800, 3000); await hold(page, "b-guard");
+  },
+
+  async c(page) {
+    await page.goto(URLS.molfi, { waitUntil: "networkidle" });
+    await assertHydrated(page, "molfi");
+    await line(page, "c-land");
+    const H = await page.evaluate(() => document.body.scrollHeight);
+    for (const f of [0.35, 0.7]) await smoothTo(page, Math.round(H * f), 2400);
+    await hold(page, "c-land");
+
+    await page.goto(`${URLS.molfi}/markets`, { waitUntil: "networkidle" });
+    await until(page, "markets rendered", () => /Strike price|Current price/i.test(document.body.innerText), 45000);
+    await line(page, "c-markets"); await smoothTo(page, 500, 2500); await hold(page, "c-markets");
+
+    await page.goto(`${URLS.explorer}/address/0x0A752D897f7D61Ce0690EEF812027000813467bb`, { waitUntil: "domcontentloaded" });
+    await line(page, "c-tee"); await smoothTo(page, 700, 3000); await hold(page, "c-tee");
+
+    await line(page, "c-honest"); await hold(page, "c-honest");
+    await line(page, "c-outro"); await hold(page, "c-outro");
+  },
 };
 
-const document_h = (f) => Math.round(4000 * f); // replaced at runtime by real scrollHeight
 
 async function main() {
   const take = process.argv[process.argv.indexOf("--take") + 1] || "a";
@@ -263,8 +340,23 @@ async function main() {
   const raw = DEMO_KEY.trim();
   const acct = privateKeyToAccount((raw.startsWith("0x") ? raw : "0x" + raw));
 
-  const browser = await chromium.launch({ headless: false, args: ["--window-size=1440,900", "--window-position=0,0"] });
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
+  const browser = await chromium.launch({
+    headless: false,
+    args: [
+      "--window-size=1440,900", "--window-position=0,0",
+      // navigator.webdriver is the flag bot checks look at first.
+      "--disable-blink-features=AutomationControlled",
+    ],
+  });
+  const ctx = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+    deviceScaleFactor: 2,
+    userAgent:
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) " +
+      "Chrome/131.0.0.0 Safari/537.36",
+    locale: "en-US",
+  });
+  await ctx.addInitScript(() => Object.defineProperty(navigator, "webdriver", { get: () => undefined }));
   const page = await ctx.newPage();
   await installCursor(page);
   await installWallet(page, acct.address);
