@@ -1,3 +1,21 @@
+> **SUPERSEDED — do not paste this.** It opens by asserting the shared enclave has real
+> hardware attestation. It does not. The CVM deployed to genuine TDX and `detectTee()`
+> reported `dstack`, but the guest agent never served a quote —
+> `hardwareAttestation.available` stayed `false` and all four `/prpc/*` spellings returned
+> HTML 404s. The machine has since been destroyed.
+>
+> The hadal session was sent the corrected facts and answered anyway. Its conclusion, kept
+> here because it is the durable part:
+> `setTeeAddress` on the demo instance **reverts with `TeeNotAttested`** — the tenant is
+> not in Flare's registry, so the migration is structurally impossible, not merely unwise.
+> A TDX quote and a Flare registry attestation are different claims and the contract only
+> reads the second. Separately: the seed is env-injected and HKDF is deterministic and
+> published, so migrating would make hadal's key *more* extractable, not less.
+>
+> Kept for the record.
+
+---
+
 # Prompt for the **hadal** session — point it at the real TEE
 
 Paste after the dorr Phala CVM is live. **Replace `<CVM_URL>`** with the URL

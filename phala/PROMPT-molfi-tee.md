@@ -1,3 +1,20 @@
+> **SUPERSEDED — do not paste this.** It opens by asserting the shared enclave has real
+> hardware attestation. It does not. The CVM deployed to genuine TDX and `detectTee()`
+> reported `dstack`, but the guest agent never served a quote —
+> `hardwareAttestation.available` stayed `false` and all four `/prpc/*` spellings returned
+> HTML 404s. The machine has since been destroyed.
+>
+> The molfi session was sent the corrected facts and answered anyway. Its conclusion, kept
+> here because it is the durable part:
+> `updateTeeMachineSettings` demotes PRODUCTION → PAUSED, so re-pointing the dead tunnel
+> costs the `2`. And `SealedBidBook.teeSigner` (`0x6a066930…`) is **not** the derived molfi
+> tenant (`0x8D642631…`) — pointing molfi at the CVM would be an on-chain trust-anchor
+> change, and the quote would attest dorr's image rather than molfi's registered code hash.
+>
+> Kept for the record.
+
+---
+
 # Prompt for the **molfi** session — real hardware exists now
 
 Paste after the dorr Phala CVM is live. **Replace `<CVM_URL>`**.

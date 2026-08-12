@@ -1,4 +1,7 @@
-# Phala deploy kit — real Intel TDX for all three projects
+# Phala deploy kit — deploying the enclave to real Intel TDX
+
+> **Status: the host is TDX, the quote is not yet obtained.** See the run log at the
+> bottom before repeating any hardware claim from this file.
 
 One `tdx.small` CVM (~$0.06/hr) runs the shared enclave. dorr, hadal and molfi
 all get hardware attestation from it, because it is the **same image already

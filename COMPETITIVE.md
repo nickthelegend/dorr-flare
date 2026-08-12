@@ -75,9 +75,16 @@ This is the bounty, so it deserves no hand-waving.
 chain-side proof and no hardware. A judge who only asks "is it a real TEE?" scores Torch
 higher. A judge who asks "what does the chain actually check?" scores us higher.
 
-**So we take the union.** Running our enclave in real TDX while keeping the payload-bound
-on-chain verifier makes dorr strictly stronger than Torch on their own bounty — real
-hardware *and* the only on-chain attestation check in the competition.
+**So we take the union** — that was the plan, and it is not done. We deployed the enclave
+to a Phala dstack CVM on 2026-08-11. The host is genuine TDX and `detectTee()` correctly
+reported `dstack` where Heroku reports `none`, but the guest agent never served a quote:
+all four `/prpc/*` spellings returned HTML 404s, so `hardwareAttestation.available` stayed
+`false`. See [phala/README.md](phala/README.md) for the run log.
+
+**So the honest scoreboard is:** Torch has the hardware and no chain-side proof. We have
+the chain-side proof and no hardware measurement. Neither of us is hardware-attested in a
+way a verifier could check today — the difference is that our endpoint says so and theirs
+reports a self-declared `IMAGE_DIGEST`.
 
 ## 5 · The one thing Torch cannot copy
 

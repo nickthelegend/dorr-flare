@@ -1,6 +1,7 @@
 # flare-tee-kit
 
-Confidential compute for Flare apps: real TDX / Confidential Space attestation, ECIES
+Confidential compute for Flare apps: it asks the host for a real TDX / Confidential Space
+quote and reports honestly when it does not get one, ECIES
 sealing, and multi-tenant enclave identities a contract can actually verify.
 
 Extracted from [dorr](https://dorr-flare.vercel.app) and used by three Flare Summer Signal
