@@ -1,90 +1,114 @@
 {
-  "_note": "Phase 1 script. One entry per beat in recording.md. Durations are MEASURED in Phase 2 and written to durations.json \u2014 never estimated here, because an estimated span drifts and the driver holds on the real number.",
+  "_note": "Phase 1 \u2014 one line per beat in recording.md (dorr only, 28 beats). Durations are MEASURED in Phase 2 into audio/durations.json. Never estimated here: an estimate that is short on every line compounds, and by beat twenty the voice describes something that has left the screen.",
   "voice": "af_heart",
   "lines": [
     {
-      "id": "a-intro",
-      "text": "On every public trading venue, your order is visible before it fills. A bot sees the size, buys ahead of you, and sells into your fill. This is dorr \u2014 perpetual futures on Flare where the venue matching your order cannot read it."
+      "id": "intro",
+      "text": "On every public trading venue, your order is visible before it fills. A bot reads the size, buys ahead of you, and sells into your fill. You pay for the privilege of being seen. This is dorr \u2014 perpetual futures on Flare, where the venue matching your order cannot read it."
     },
     {
-      "id": "a-land-hero",
-      "text": "That number is not marketing copy. The page just ran the attack against the live pool: on a transparent exchange, a front-runner took two hundred and five dollars from this order. Here it takes nothing."
+      "id": "land-hero",
+      "text": "That number is not marketing copy. This page just ran the attack against the live pool. On a transparent exchange a front-runner took two hundred and five dollars out of this order. Here it takes nothing."
     },
     {
-      "id": "a-land-scroll",
-      "text": "The mechanism is four steps. Your order is timelock-encrypted in your browser. The operator holds ciphertext it cannot open. The whole epoch clears at one price. And the chain re-reads the oracle to check that price was honest."
+      "id": "land-seal",
+      "text": "The mechanism is four steps, and the first happens before anything leaves your machine. Your order is timelock-encrypted in the browser to a drand round that has not been published yet."
     },
     {
-      "id": "a-attack-open",
-      "text": "Rather than describe that, let's run the attack. This is a real sandwich against the live virtual AMM \u2014 not a simulation."
+      "id": "land-blind",
+      "text": "So what the operator receives is ciphertext and a thirty-two byte commitment. Not a promise that it will not look \u2014 the decryption key does not exist yet, anywhere."
     },
     {
-      "id": "a-attack-run",
-      "text": "On the transparent side, the bot spots the order in the clear, front-runs it, and pockets two hundred and five dollars. On dorr, it sees a thirty-two byte commitment. It tries twenty-five thousand real SHA-256 preimages, gets zero matches, and aborts. The victim fills at the fair price."
+      "id": "land-clear",
+      "text": "When the round lands, every order in that epoch clears at a single uniform price. A bot that front-runs and back-runs is buying and selling at the same number."
     },
     {
-      "id": "a-attack-tabs",
-      "text": "The sealing is a live drand round from the League of Entropy, and the operator is refused when it tries to decrypt early. Under uniform-price clearing, a sandwich nets exactly zero \u2014 not by policy, by construction."
+      "id": "land-band",
+      "text": "And the chain checks our arithmetic. The settlement contract re-reads FTSO version two itself and reverts if our clearing price is off-market. The referee is Flare, not us."
     },
     {
-      "id": "a-connect",
-      "text": "Connecting a wallet on Flare Coston2. That balance is a real read from the vault contract, not a number this page invented."
+      "id": "attack-open",
+      "text": "Rather than describe that, let's attack it. This is a real sandwich against the live virtual AMM \u2014 real fills, real reserves, restored afterwards."
     },
     {
-      "id": "a-order-form",
-      "text": "Margin and leverage. Notional and the liquidation distance recompute against the live FTSO version two mark price."
+      "id": "attack-run",
+      "text": "On the transparent side the bot spots the order in the clear, front-runs it, and pockets two hundred and five dollars. On dorr it sees a hash. It tries twenty-five thousand real SHA-256 preimages, gets zero matches, and aborts. The victim fills at the fair price."
     },
     {
-      "id": "a-commit",
-      "text": "Signing the order now. This is a real signature being submitted on-chain \u2014 a genuine EIP-191 envelope bound to these exact parameters, on Flare Coston2 testnet."
+      "id": "attack-sealed",
+      "text": "The sealing uses a live drand round from the League of Entropy \u2014 a twelve of twenty-two threshold network. Watch the operator try to decrypt early and get refused."
     },
     {
-      "id": "a-feed",
-      "text": "And here is the entire point. The public feed shows a hash. No side, no size, no price, no leverage. That is everything an observer gets."
+      "id": "attack-batch",
+      "text": "And under uniform-price clearing the sandwich nets exactly zero. Not because we forbid it. Because both legs execute at the same price."
     },
     {
-      "id": "a-explorer",
-      "text": "On the Coston2 explorer: the vault deposit, and a batch settling on-chain. The settlement contract re-reads FTSO itself and reverts if our clearing price is off-market. The referee is Flare, not us."
+      "id": "attack-ab",
+      "text": "Same order, two venues, side by side. The only variable is the market design."
     },
     {
-      "id": "a-verify",
-      "text": "This page is read live from the running system. Nothing on it is typed by hand \u2014 the contracts come from the operator, the attestation from the enclave itself."
+      "id": "connect",
+      "text": "Now let's actually use it. Connecting a wallet on Flare Coston2. That balance is a real read from the vault contract, not a number this page invented."
     },
     {
-      "id": "a-tee",
-      "text": "Hardware attestation is live. A real Intel TDX quote, five thousand and ten bytes, from a Phala confidential VM. And critically, the report data is the batch payload hash \u2014 so the CPU signature covers this specific batch, not merely the fact that an enclave was running somewhere."
+      "id": "collateral",
+      "text": "Collateral is FXRP \u2014 Flare's FAssets bridged XRP. Balance, free, and locked, read straight from the vault address shown underneath."
     },
     {
-      "id": "b-land",
-      "text": "Second project. Hadal \u2014 confidential FXRP payments on Flare. The chain records that you paid. It never records how much."
+      "id": "faucet",
+      "text": "Testnet FXRP comes from the FAssets faucet. Real bridged asset mechanics, no value at stake."
     },
     {
-      "id": "b-explorer",
-      "text": "On the Coston2 explorer, the confidential FXRP contract itself. Every transfer it records carries a commitment, never an amount."
+      "id": "order-form",
+      "text": "Margin and leverage. Notional and the liquidation distance recompute against the live FTSO mark price as you move them."
     },
     {
-      "id": "b-guard",
-      "text": "And the honest part. Hadal releases value only against a machine Flare's own registry reports as production. A valid TDX quote alone is refused \u2014 a hardware quote and a Flare registry entry are different claims, and this contract reads the second one."
+      "id": "privacy",
+      "text": "And this is the switch that matters. Private: the public sees only a hash. Public foil: your full order is broadcast, the way every other venue works. Same engine, one flag."
     },
     {
-      "id": "c-land",
-      "text": "Third project. Molfi \u2014 confidential prediction markets, live on Flare Coston2."
+      "id": "commit",
+      "text": "Signing the order now. A real EIP-191 signature, bound to these exact parameters, submitted on-chain to Flare Coston2."
     },
     {
-      "id": "c-markets",
-      "text": "A real market with a live FTSO price, odds on both sides, and an on-chain settlement deadline counting down."
+      "id": "feed",
+      "text": "And here is the whole claim in one panel. The public feed shows a hash. No side, no size, no price, no leverage. That is everything an observer gets, including the operator."
     },
     {
-      "id": "c-tee",
-      "text": "Molfi's machine is registered on Flare's own TEE manager at status two, production. That is not our claim: Flare's data providers reached the machine, requested attestation, matched it against a reward epoch, and voted it available."
+      "id": "positions",
+      "text": "The same order, from the side that owns it. Entry, mark, liquidation price, margin \u2014 visible to you, opaque to everyone else."
     },
     {
-      "id": "c-honest",
-      "text": "And what it does not prove. That registration ran with the simulated TEE flag on, so the code hash is declared rather than measured by a CPU. Molfi has Flare's verdict without the silicon. Dorr has the silicon. We would rather tell you that than let you find it."
+      "id": "explorer-tx",
+      "text": "On the Coston2 explorer: a batch settling on-chain. The logs carry the epoch, the membership root and the clearing price the contract checked against the oracle."
     },
     {
-      "id": "c-outro",
-      "text": "Three projects, one confidential compute story. Every contract address, transaction hash and attestation is in the repositories, and the verify pages read from the live system so you can check any of it yourself. Thanks very much for watching."
+      "id": "explorer-vault",
+      "text": "And the vault's own transaction list. Deposits in, depositor-signed withdrawals out, and nothing from the operator, because there is nothing it could send."
+    },
+    {
+      "id": "verify",
+      "text": "This page is read live from the running system. The contracts come from the operator, the attestation from the enclave itself. Nothing here is typed by hand \u2014 if the page and the deployment ever disagree, the page is wrong."
+    },
+    {
+      "id": "tee-live",
+      "text": "Hardware attestation is live. The matching engine runs inside a Phala confidential VM on Intel TDX, and the operator holds no attestation key at all \u2014 it delegates, so it cannot forge a quote even for itself."
+    },
+    {
+      "id": "tee-json",
+      "text": "This is the raw attestation. Five thousand and ten bytes of Intel TDX quote, a version four header, and a quote hash you can check against the machine's own attestation page."
+    },
+    {
+      "id": "tee-bound",
+      "text": "And this is the field that matters. Report data is the batch payload hash. The CPU signature covers this specific settlement \u2014 not merely the fact that an enclave was running somewhere. For contrast, the closest competing entry reports an image digest from an environment variable the container sets about itself, and never fetches a quote at all."
+    },
+    {
+      "id": "honest",
+      "text": "What is not proven. Version one runs a trusted operator for matching and execution, like a sequencer. Liquidity is a virtual AMM, not an external order book. It is testnet, and it is unaudited. Those are real limits and we would rather state them than have you find them."
+    },
+    {
+      "id": "outro",
+      "text": "Every contract address, every transaction hash and the live attestation are in the repository and on the verify page, so you can check any of this yourself rather than take our word for it. Thanks very much for watching."
     }
   ]
 }
