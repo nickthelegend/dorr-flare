@@ -37,6 +37,9 @@ const DEMO_KEY = process.env.FLARE_RELAYER_KEY;
 if (!DEMO_KEY) throw new Error("PREFLIGHT_NO_KEY: set FLARE_RELAYER_KEY (Coston2 testnet only)");
 
 let t0 = 0;
+/** Hashes this take actually produced. The explorer beat opens these, not a constant. */
+const TXS = [];
+
 const mark = (id, signing = false) => {
   const ms = Date.now() - t0;
   const row = `DEMO_LINE ${ms} ${id}${signing ? " SIGNING" : ""}`;
@@ -240,6 +243,34 @@ async function assertHydrated(page, where) {
   }
 }
 
+/**
+ * Close every open position before rolling.
+ *
+ * Five were left on screen from earlier takes, so the positions panel opened on
+ * other people's trades and the free margin was too low for the one this take
+ * places. A demo that starts dirty is not the flow a user sees.
+ */
+async function clearPositions() {
+  const { privateKeyToAccount } = await import("viem/accounts");
+  const raw = DEMO_KEY.trim();
+  const acct = privateKeyToAccount((raw.startsWith("0x") ? raw : "0x" + raw));
+  const OP = "https://dorr-operator-9449c5bb5086.herokuapp.com";
+  const list = await fetch(`${OP}/positions/${acct.address}`).then((r) => r.json()).catch(() => []);
+  const open = (Array.isArray(list) ? list : list.positions || []).filter((p) => p.status === "open");
+  if (!open.length) return console.log("preflight: no open positions");
+  for (const pos of open) {
+    const params = { positionId: pos.id, address: acct.address };
+    const ts = Date.now();
+    const msg = `dorr:close\n${JSON.stringify(params, Object.keys(params).sort())}\nts:${ts}`;
+    const signature = await acct.signMessage({ message: msg });
+    await fetch(`${OP}/positions/${pos.id}/close`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...params, auth: { signer: acct.address, ts, sig: { signature } } }),
+    }).catch(() => {});
+  }
+  console.log(`preflight: closed ${open.length} position(s)`);
+}
+
 async function preflight(page, ctx) {
   // chain
   const { createPublicClient, http } = await import("viem");
@@ -311,13 +342,19 @@ const takes = {
     await smoothTo(page, 1500, 1800);
     await line(page, "faucet-open"); await hold(page, "faucet-open");
 
-    const before = await fxrpBalance();
-    await clickAt(page, "button:has-text('GET FXRP')").catch(() => {});
-    await line(page, "faucet-claim", { signing: true });
-    await signingOverlay(page, true, "Claiming test FXRP");
-    // Real state: the wallet balance has to actually rise.
-    await waitForBalance(before, 180000).catch(() => {});
-    await signingOverlay(page, false);
+    // `handleFaucet` is `window.open(faucet.flare.network)` — it opens Flare's
+    // faucet and transfers nothing. The old beat put a "Claiming test FXRP"
+    // overlay over it and waited for a balance that could never move, which is
+    // how it hung for 196 seconds against 8 seconds of narration. Show the
+    // button and the balance the wallet really holds; no overlay, because
+    // nothing here is signed.
+    const bal = await fxrpBalance();
+    console.log(`  wallet holds ${Number(bal) / 1e6} FXRP`);
+    await clickAt(page, "button:has-text('Get FXRP'), button:has-text('GET FXRP')").catch(() => {});
+    await page.waitForTimeout(1200);
+    // The faucet opens a new tab; close it so the capture stays on the app.
+    for (const pg of page.context().pages()) if (pg !== page) await pg.close().catch(() => {});
+    await line(page, "faucet-claim");
     await hold(page, "faucet-claim");
 
     await smoothTo(page, 0, 1200);
@@ -325,7 +362,9 @@ const takes = {
     await until(page, "vault read", () => /Free balance/i.test(document.body.innerText), 40000);
     await line(page, "connect"); await hold(page, "connect");
 
-    await smoothTo(page, 1500, 1600);
+    // Scroll to the panel and let it settle before clicking. A click issued
+    // while the smooth scroll is still running lands on wherever the button was.
+    await smoothTo(page, 1500, 2600);
     await line(page, "deposit", { signing: true });
     await clickAt(page, "button:has-text('DEPOSIT')");
     await signingOverlay(page, true, "Signing Transaction");
@@ -360,12 +399,21 @@ const takes = {
 
     // ── the same trade, in the open ──────────────────────────────────────────
     await smoothTo(page, 0, 1200);
+    // After a successful commit the panel is in its terminal state and the
+    // submit button is replaced by "New order" — so the public trade had
+    // nothing to click. Reset the form before placing the second one.
+    const reset = page.locator("button").filter({ hasText: /^New order$/i }).first();
+    if (await reset.count()) { await clickAt(page, "button:has-text('New order')"); await page.waitForTimeout(1200); }
     await clickAt(page, "button:has-text('Public foil')");
     await typeInto(page, "input[inputmode=decimal]", "0.05");
     await line(page, "trade-public", { signing: true });
-    await clickAt(page, "button:has-text('LONG FLR')").catch(() => {});
+    // The overlay used to go up whether or not the click landed, so it could
+    // cover a transaction that was never sent. Click first, and only raise it
+    // once the click actually succeeded.
+    await clickAt(page, "button:has-text('publicly')");
     await signingOverlay(page, true, "Signing Transaction");
-    await page.waitForTimeout(6000);
+    await until(page, "public order accepted",
+      () => /public|broadcast|Committed/i.test(document.body.innerText), 90000);
     await signingOverlay(page, false);
     await hold(page, "trade-public");
 
@@ -390,8 +438,12 @@ const takes = {
     await page.keyboard.press("Escape");
 
     // ── check it ─────────────────────────────────────────────────────────────
-    await page.goto(`${URLS.explorer}/tx/0x3a732edf643605afbbfaa0c98bd1bc6214ab894759415e7c5a5b76e2209e3312`,
-      { waitUntil: "domcontentloaded" });
+    // This take's own transaction, with the historical settlement as the
+    // fallback only if nothing was sent (which would itself be a failure).
+    const shown = TXS[TXS.length - 1] ||
+      "0x3a732edf643605afbbfaa0c98bd1bc6214ab894759415e7c5a5b76e2209e3312";
+    console.log(`  explorer showing ${shown}`);
+    await page.goto(`${URLS.explorer}/tx/${shown}`, { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(2500);
     await line(page, "explorer-tx"); await smoothTo(page, 500, 2600); await hold(page, "explorer-tx");
 
@@ -466,6 +518,11 @@ async function main() {
       value: tx.value ? BigInt(tx.value) : undefined,
     });
     console.log(`  TX ${hash}`);
+    // Remember it: the explorer beat opens the transactions THIS take created,
+    // not a constant baked in months ago. A demo that points at someone else's
+    // old hash is asking the viewer to take the link on faith.
+    TXS.push(hash);
+    appendFileSync(LOG.replace("beat-log", "tx-log"), hash + "\n");
     return hash;
   });
 
@@ -502,6 +559,7 @@ async function main() {
     if (e.stack) console.error(e.stack.split("\n").slice(0, 6).join("\n"));
   });
 
+  await clearPositions();
   const errCount = await preflight(page, ctx);
   t0 = Date.now();
   try {

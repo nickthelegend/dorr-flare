@@ -117,7 +117,7 @@ def title_card(path, lines, secs, tmp):
     frames = int(secs * FPS)
     fdir = os.path.join(tmp, "f_" + os.path.basename(path).replace(".mp4", ""))
     os.makedirs(fdir, exist_ok=True)
-    FONT = "/System/Library/Fonts/Helvetica.ttc"
+    FONT = os.path.join(os.path.dirname(__file__), "fonts", "Inter-SemiBold.ttf")
     fonts = {sz: ImageFont.truetype(FONT, sz) for _, sz, _, _ in lines}
 
     ease = lambda p: 1 - (1 - p) ** 3           # easeOutCubic
@@ -188,7 +188,7 @@ def logo_card(path, secs, tmp):
     BG = (11, 18, 32)
     frames = int(secs * FPS)
     fdir = os.path.join(tmp, "f_logo"); os.makedirs(fdir, exist_ok=True)
-    FONT = "/System/Library/Fonts/Helvetica.ttc"
+    FONT = os.path.join(os.path.dirname(__file__), "fonts", "Inter-SemiBold.ttf")
     f_word = ImageFont.truetype(FONT, 92)
     f_sub = ImageFont.truetype(FONT, 34)
     f_tag = ImageFont.truetype(FONT, 24)
@@ -244,10 +244,12 @@ def data_card(path, heading, rows, secs, tmp, highlight=None):
     frames = int(secs * FPS)
     fdir = os.path.join(tmp, "f_" + os.path.basename(path).replace(".mp4", ""))
     os.makedirs(fdir, exist_ok=True)
-    HEL = "/System/Library/Fonts/Helvetica.ttc"
-    MONO = "/System/Library/Fonts/Menlo.ttc"
+    HERE = os.path.dirname(__file__)
+    HEL = os.path.join(HERE, "fonts", "Inter-SemiBold.ttf")
+    HELR = os.path.join(HERE, "fonts", "Inter-Regular.ttf")
+    MONO = os.path.join(HERE, "fonts", "RobotoMono.ttf")
     f_h = ImageFont.truetype(HEL, 44)
-    f_k = ImageFont.truetype(HEL, 23)
+    f_k = ImageFont.truetype(HELR, 23)
     f_v = ImageFont.truetype(MONO, 23)
     ease = lambda p: 1 - (1 - p) ** 3
 
