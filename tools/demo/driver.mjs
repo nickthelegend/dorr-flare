@@ -147,6 +147,11 @@ async function clickAt(page, sel, ms = 700) {
 async function typeInto(page, sel, text) {
   const el = page.locator(sel).first();
   await el.click();
+  // Clear first. This appended before, so a deposit field pre-filled with "100"
+  // became "1001" — far over the wallet balance, so handleDeposit bailed and
+  // never broadcast, and the explorer beat had no transaction of its own.
+  await el.press("Meta+A").catch(() => {});
+  await el.press("Backspace").catch(() => {});
   for (const ch of text) {
     await el.type(ch, { delay: 0 });
     await page.waitForTimeout(42 + Math.random() * 22);
@@ -250,6 +255,16 @@ async function assertHydrated(page, where) {
  * other people's trades and the free margin was too low for the one this take
  * places. A demo that starts dirty is not the flow a user sees.
  */
+/** Wait until the take has actually broadcast `n` transactions. */
+async function waitForTxs(n, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (TXS.length >= n) return;
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  throw new Error(`NO_TX_BROADCAST: expected ${n}, have ${TXS.length}`);
+}
+
 async function clearPositions() {
   const { privateKeyToAccount } = await import("viem/accounts");
   const raw = DEMO_KEY.trim();
@@ -365,11 +380,19 @@ const takes = {
     // Scroll to the panel and let it settle before clicking. A click issued
     // while the smooth scroll is still running lands on wherever the button was.
     await smoothTo(page, 1500, 2600);
+    // The deposit field defaults to 100 and the wallet holds ~3 FXRP, so
+    // handleDeposit bailed on insufficient balance and never broadcast —
+    // which is why the explorer beat had no transaction of its own to show.
+    // inputMode="numeric" distinguishes it from the order form's decimal input.
+    await typeInto(page, "input[inputmode=numeric]", "1");
     await line(page, "deposit", { signing: true });
+    const txsBefore = TXS.length;
     await clickAt(page, "button:has-text('DEPOSIT')");
     await signingOverlay(page, true, "Signing Transaction");
-    await hold(page, "deposit");
+    // Approve then deposit: wait for BOTH to broadcast rather than a fixed pause.
+    await waitForTxs(txsBefore + 2, 150000).catch(() => waitForTxs(txsBefore + 1, 45000));
     await signingOverlay(page, false);
+    await hold(page, "deposit");
 
     await line(page, "collateral"); await hold(page, "collateral");
 
@@ -440,8 +463,11 @@ const takes = {
     // ── check it ─────────────────────────────────────────────────────────────
     // This take's own transaction, with the historical settlement as the
     // fallback only if nothing was sent (which would itself be a failure).
-    const shown = TXS[TXS.length - 1] ||
-      "0x3a732edf643605afbbfaa0c98bd1bc6214ab894759415e7c5a5b76e2209e3312";
+    // No silent fallback. The line says "the transactions this demo just
+    // created", so if none were, that is a failed take rather than a constant
+    // quietly standing in for one.
+    if (!TXS.length) throw new Error("NO_TX_TO_SHOW: explorer beat narrates a tx this take never sent");
+    const shown = TXS[TXS.length - 1];
     console.log(`  explorer showing ${shown}`);
     await page.goto(`${URLS.explorer}/tx/${shown}`, { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(2500);
