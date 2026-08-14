@@ -273,17 +273,29 @@ async function clearPositions() {
   const list = await fetch(`${OP}/positions/${acct.address}`).then((r) => r.json()).catch(() => []);
   const open = (Array.isArray(list) ? list : list.positions || []).filter((p) => p.status === "open");
   if (!open.length) return console.log("preflight: no open positions");
+  // The server signs over { positionId, fraction } — signing { positionId,
+  // address } produced a mismatch, every close 401'd, and the .catch swallowed
+  // it. It reported "closed 8" while eight stayed open on screen.
+  let closed = 0;
+  const failures = [];
   for (const pos of open) {
-    const params = { positionId: pos.id, address: acct.address };
+    const params = { positionId: pos.id, fraction: 1 };
     const ts = Date.now();
     const msg = `dorr:close\n${JSON.stringify(params, Object.keys(params).sort())}\nts:${ts}`;
     const signature = await acct.signMessage({ message: msg });
-    await fetch(`${OP}/positions/${pos.id}/close`, {
+    const r = await fetch(`${OP}/positions/${pos.id}/close`, {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ ...params, auth: { signer: acct.address, ts, sig: { signature } } }),
-    }).catch(() => {});
+    });
+    if (r.ok) closed++;
+    else failures.push(`${pos.id.slice(0, 8)} ${r.status} ${(await r.text()).slice(0, 60)}`);
   }
-  console.log(`preflight: closed ${open.length} position(s)`);
+  console.log(`preflight: closed ${closed}/${open.length}`);
+  if (failures.length) {
+    // Loudly. A demo that opens on ten stale positions is not the flow a user
+    // sees, and pretending they closed is how it shipped that way last time.
+    throw new Error(`CLOSE_FAILED: ${failures.length} position(s)\n  ${failures.join("\n  ")}`);
+  }
 }
 
 async function preflight(page, ctx) {

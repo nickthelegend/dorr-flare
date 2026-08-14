@@ -90,13 +90,38 @@ def cut(take, tmp):
               f"{'  [SIGNING]' if b['signing'] else ''}")
     return clips
 
+def narrate(clip, beat_id, tmp):
+    """Mux a slide's own narration onto it.
+
+    The cards were built silent and the concat step handed every silent clip a
+    bed of silence — so intro, the three attestation panels, honest and outro
+    all played mute while their audio sat unused in audio/. The narration was
+    generated and measured; it just never reached the file.
+    """
+    wav = os.path.join(AUDIO, f"{beat_id}.wav")
+    if not os.path.exists(wav):
+        raise SystemExit(f"NO_SLIDE_AUDIO: {beat_id}.wav missing — regenerate Phase 2")
+    out = clip.replace(".mp4", "_a.mp4")
+    sh("ffmpeg", "-y", "-i", clip, "-i", wav, "-c:v", "copy",
+       "-af", "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,apad",
+       "-shortest", "-c:a", "aac", "-b:a", "160k", out, "-loglevel", "error")
+    return out
+
+
 def live_attestation():
     """Read the real quote for the slides. Typeset from the machine, not typed."""
     import urllib.request
-    url = ("https://59b7ffee2f565bdebf0ff4b076b0f1c0ba4152e4-8795"
-           ".dstack-pha-prod5.phala.network/tee/attestation")
+    # Ask for a quote over a payload hash. /tee/attestation with no argument
+    # returns report_data of all zeros, and the slide says report_data IS the
+    # batch payload hash — so the panel was arguing with itself on screen.
+    base = ("https://59b7ffee2f565bdebf0ff4b076b0f1c0ba4152e4-8795"
+            ".dstack-pha-prod5.phala.network")
+    payload = "0x" + "".join(f"{b:02x}" for b in os.urandom(32))
+    req = urllib.request.Request(f"{base}/t/dorr/sign", method="POST",
+                                 data=json.dumps({"payloadHash": payload}).encode(),
+                                 headers={"content-type": "application/json"})
     try:
-        with urllib.request.urlopen(url, timeout=25) as r:
+        with urllib.request.urlopen(req, timeout=30) as r:
             h = json.load(r)["hardwareAttestation"]
         return {"head": h["quote"][:40], "hash": h.get("quoteHash", ""),
                 "report": h.get("reportData", "")}
@@ -296,7 +321,7 @@ def main():
 
     intro = os.path.join(tmp, "intro.mp4")
     logo_card(intro, DUR.get("intro", 17.0) + 0.6, tmp)
-    all_clips.append(intro)
+    all_clips.append(narrate(intro, "intro", tmp))
 
     # The app footage, split so the attestation panels land where the narration
     # puts them — straight after the order, not bolted onto the end.
@@ -329,7 +354,8 @@ def main():
         after = ids[i] if i < len(ids) else None
         if after == "positions":
             for sid in ("tee-attest", "tee-bound", "tx-details"):
-                o = os.path.join(tmp, f"{sid}.mp4"); mid[sid](o); all_clips.append(o)
+                o = os.path.join(tmp, f"{sid}.mp4"); mid[sid](o)
+                all_clips.append(narrate(o, sid, tmp))
 
     honest = os.path.join(tmp, "honest.mp4")
     title_card(honest, [
@@ -338,7 +364,7 @@ def main():
         ("liquidity is a vAMM, not an external book", 26, -30, (203, 213, 225)),
         ("testnet  ·  unaudited", 26, 20, (203, 213, 225)),
     ], DUR.get("honest", 18.0) + 0.6, tmp)
-    all_clips.append(honest)
+    all_clips.append(narrate(honest, "honest", tmp))
 
     outro = os.path.join(tmp, "outro.mp4")
     title_card(outro, [
@@ -346,7 +372,7 @@ def main():
         ("github.com/nickthelegend/dorr-flare", 28, -10, (157, 180, 255)),
         ("every claim is checkable on-chain", 22, 60, (127, 142, 163)),
     ], DUR.get("outro", 14.0) + 0.6, tmp)
-    all_clips.append(outro)
+    all_clips.append(narrate(outro, "outro", tmp))
 
     # Concat needs identical streams; the two cards have no audio, so give them
     # silence rather than letting concat drop the audio track for everything after.
