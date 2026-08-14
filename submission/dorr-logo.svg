@@ -1,0 +1,30 @@
+<svg width="480" height="480" viewBox="0 0 480 480" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="480" y2="480" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0B1220"/>
+      <stop offset="100%" stop-color="#060A14"/>
+    </linearGradient>
+    <linearGradient id="body" x1="150" y1="210" x2="330" y2="336" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2C6BFF"/>
+      <stop offset="100%" stop-color="#0344DC"/>
+    </linearGradient>
+    <linearGradient id="shackle" x1="240" y1="130" x2="240" y2="215" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#7AA6FF"/>
+      <stop offset="100%" stop-color="#2C6BFF"/>
+    </linearGradient>
+  </defs>
+  <rect width="480" height="480" fill="url(#bg)"/>
+  <!-- the mark, scaled from the 256 grid and centred with room for the wordmark -->
+  <g transform="translate(112,84) scale(0.9)">
+    <path d="M84 116V78a44 44 0 0 1 88 0v38" fill="none" stroke="url(#shackle)"
+          stroke-width="24" stroke-linecap="round" pathLength="100"
+          stroke-dasharray="86 100" stroke-dashoffset="-7"/>
+    <rect x="40" y="112" width="176" height="120" rx="34" fill="url(#body)"/>
+    <path d="M128 146a15 15 0 0 1 8.4 27.4l5.1 24.1a5 5 0 0 1-4.9 6.1h-17.2a5 5 0 0 1-4.9-6.1l5.1-24.1A15 15 0 0 1 128 146Z"
+          fill="#fff" fill-opacity="0.96"/>
+  </g>
+  <text x="240" y="408" text-anchor="middle" font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+        font-size="76" font-weight="700" letter-spacing="6" fill="#FFFFFF">dorr</text>
+  <text x="240" y="440" text-anchor="middle" font-family="Menlo, monospace"
+        font-size="17" letter-spacing="5" fill="#7AA6FF">PRIVACY PERPS · FLARE</text>
+</svg>
