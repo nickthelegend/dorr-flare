@@ -152,108 +152,107 @@ Code   https://github.com/nickthelegend/dorr-flare
 ## Full description — paste this into the BUIDL description field
 
 ```markdown
-## dorr — perpetual futures where the exchange cannot read your order
+# dorr
 
-On a public venue your order is visible before it fills. Bots read the order
-flow, buy ahead of you, and sell back at a worse price. You lose money for being
-seen. dorr removes the input that attack depends on.
+**Perpetual futures where the exchange cannot read your order.**
 
-**Live on Flare Coston2. Every number below is read from the running system.**
+Try it: [dorr-flare.vercel.app](https://dorr-flare.vercel.app) · Live on Flare Coston2
 
-- App — https://dorr-flare.vercel.app
-- Verify page (live, nothing typed by hand) — https://dorr-flare.vercel.app/verify
-- Code — https://github.com/nickthelegend/dorr-flare
+---
 
-### How it works
+Place a trade on any public exchange and your order is visible before it fills.
+Bots read the order flow, buy ahead of you, and sell back at a worse price. You
+lose money for no reason other than having been seen.
 
-**1 · Your order is a hash.** You sign an order in the browser; what reaches the
-public feed is a commitment. No side, no size, no price, no leverage. Optionally
-the order is also timelock-encrypted to a drand round, so the operator itself
-cannot open it until that round publishes — not by policy, by construction.
+You can watch this happen inside dorr. Open the Attack Lab and run the sandwich
+against a readable order: the front-runner takes **$205** out of the trade, and
+the trader pays **204 basis points** more than the fair price. Run it again with
+the order hidden and the attacker gets **nothing** — not because we blocked it,
+but because there is no order to read. It tries twenty-five thousand real
+SHA-256 preimages against the commitment, matches zero, and gives up. At that
+measured rate the nonce space takes on the order of 10^26 years.
 
-**2 · Matching happens inside silicon that can keep a secret.** The matching
-engine runs in an Intel TDX confidential VM on Phala Cloud. It returns a
-5,010-byte hardware quote whose `report_data` is the batch payload hash, so the
-CPU signature covers *this* batch rather than the mere fact that an enclave
-exists. The operator holds no attestation key and cannot forge a quote even for
-itself.
+That is the whole product: remove the input the attack depends on.
 
-**3 · Flare checks the result.** `DorrBatchSettlement` re-reads **FTSO v2**
-on-chain and reverts `PriceOutOfBand` if our clearing price is more than 200 bps
-off the oracle. `TEEAttestationVerifier` checks the enclave quote: registered
-`teeId`, matching measurement, signature recovery, and `payloadHash ==
-keccak256(epochId, membershipRoot, clearingPrice, orderCount)`.
+## How it works
 
-**4 · Your collateral is yours.** Margin is **FXRP** (FAssets) in `DorrVault`,
-which pays out only to the depositor. There is no operator withdrawal path —
-proven by `testFuzz_WithdrawNeverExceedsFree` and
-`test_SettlementCannotDrainVault`. Committing an order locks margin on-chain, and
-that lock is a transaction you can open in the explorer.
+**Your order leaves the browser as a hash.** You sign it locally; what reaches
+the public feed is a commitment — no side, no size, no price, no leverage. If you
+want protection from us as well, seal the order to a drand timelock round: it is
+encrypted in your browser and the operator cannot open it until that round
+publishes. Not a promise, a construction.
 
-**5 · One price for the whole epoch.** Orders in an epoch clear at a single
-uniform price. A bot that buys just before you and sells just after receives the
-same price on both legs, so the sandwich nets exactly zero — economics, not
+**Something has to match it, and that something is a chip that keeps secrets.**
+The matching engine runs inside Intel TDX — a sealed region of an Intel processor
+— rented from Phala Cloud. Software outside that region, including us and
+including the host, cannot look in. For every batch it settles, the processor
+signs a 5,010-byte hardware receipt whose report data is that batch's payload
+hash. The signature covers *this* batch and cannot be replayed onto another one.
+The operator holds no attestation key at all, so it cannot forge a receipt even
+for itself.
+
+**Then Flare checks our work.** Before accepting a settlement, the contract
+re-reads the price from **FTSO v2** on-chain and rejects the transaction if our
+clearing price is more than 200 basis points away from the oracle. A second
+contract verifies the enclave receipt: that the enclave is registered, that its
+measurement matches, that the signature recovers to it, and that the payload hash
+is exactly `keccak256(epochId, membershipRoot, clearingPrice, orderCount)`. If we
+wanted to settle you at a dishonest price, the chain would not let us.
+
+**Your collateral stays yours.** Margin is **FXRP** — XRP bridged onto Flare
+through FAssets — held in a vault that pays out only to the depositor. There is
+no operator withdrawal path; a fuzz test asserts a withdrawal can never exceed
+free balance, and another asserts settlement can never drain the vault.
+Committing an order reserves that margin on-chain, and the reservation is a
+transaction you can open in the block explorer yourself.
+
+**Everyone in an epoch gets the same price.** Orders clear at a single uniform
+price, so a bot buying just before you and selling just after is filled at the
+identical price on both legs. Its profit is exactly zero — by arithmetic, not by
 detection.
 
-### Attack it yourself
+## What Flare does here
 
-The app ships an **Attack Lab** that runs the classic sandwich twice against the
-live vAMM at its current reserves (snapshotted and restored, so no open position
-moves):
+FTSO v2 is not decoration. It supplies the live mark you trade against *and* the
+on-chain price band the settlement contract enforces against us. FAssets supplies
+the collateral: real FXRP, deposited, locked, and withdrawn through the vault.
+And Flare is where the confidential-compute claim is settled — the TDX receipt is
+checked by a contract, not by a status page we wrote.
 
-| | readable order | hidden order |
-|---|---|---|
-| attacker profit | **$205.06** | **$0.00** |
-| victim overpays | **203.7 bps** | 0 |
-| commitment cracks | n/a | **0 / 25,000** real SHA-256 preimages |
+## See it for yourself
 
-At the measured rate, exhausting the 128-bit nonce space takes ~10^26 years. The
-attack is not blocked; it has no input.
+The [`/verify`](https://dorr-flare.vercel.app/verify) page reads everything live
+from the running system: the deployed contract addresses come from the operator,
+the attestation comes from the enclave. Nothing on it is typed by hand, so if the
+page and the deployment ever disagree, the page is wrong.
 
-### Flare integrations
+The contracts are on Coston2 and linked there:
+the [vault](https://coston2-explorer.flare.network/address/0x65b705A49778b9d7bD741A0A979162393c699a98),
+the [settlement contract](https://coston2-explorer.flare.network/address/0x047478DE7d2ed6B41dEFC14223764411288Db845),
+and the [attestation verifier](https://coston2-explorer.flare.network/address/0x578D75dDbce7fBB05072b733F372De2241d698aE).
 
-| | |
-|---|---|
-| **FTSO v2** | Live marks, and the on-chain price band the settlement contract enforces |
-| **FAssets (FXRP)** | Collateral, deposits, withdrawals, margin locks — 6-decimal FXRP throughout |
-| **Confidential compute** | Intel TDX on Phala Cloud, verified on-chain by `TEEAttestationVerifier` |
+## What we have not solved
 
-### Deployed contracts — Flare Coston2 (chainId 114)
+A judge finding a limitation we hid is worse than one we named, so these are on
+the `/verify` page too, sitting next to the proofs.
 
-| contract | address |
-|---|---|
-| DorrVault | `0x65b705A49778b9d7bD741A0A979162393c699a98` |
-| DorrBatchSettlement | `0x047478DE7d2ed6B41dEFC14223764411288Db845` |
-| TEEAttestationVerifier | `0x578D75dDbce7fBB05072b733F372De2241d698aE` |
-| FTSO v2 | `0xC4e9c78EA53db782E28f28Fdf80BaF59336B304d` |
-| FXRP (FTestXRP) | `0x0b6A3645c240605887a5532109323A3E12273dc7` |
+The enclave's identity is **not sealed to the silicon** — its signing seed comes
+from the environment, which keeps our on-chain registrations valid across
+redeploys but means the host operator could read it. The clearing arithmetic is
+**not ZK-proven**: the enclave computes the uniform price, and the chain checks it
+against the oracle band and the attestation without re-executing the match. v1
+still runs a **trusted operator** for matching, the way a rollup runs a sequencer
+— what is cryptographic today is that it cannot read a sealed order, that the
+epoch clears at one price, and that collateral is self-custodied. Liquidity is a
+**virtual AMM**, not an external order book; that is the trade we made for being
+able to seal orders at all. And this is **testnet** — Coston2, FXRP with no real
+value, unaudited.
 
-Enclave (live Intel TDX): `59b7ffee…-8795.dstack-pha-prod5.phala.network`
+## Status
 
-### What is not proven — stated plainly
-
-- **The enclave's identity is not sealed to the silicon.** Its signing seed comes
-  from the environment, which keeps on-chain registrations valid across
-  redeploys, but means the host operator could read it. One attested machine
-  serves sibling projects under separate derived identities, so the blast radius
-  is shared.
-- **The clearing arithmetic is not ZK-proven.** The enclave computes the uniform
-  price; the chain checks it against the oracle band and the attestation, but
-  does not re-execute the match.
-- **v1 runs a trusted operator** for matching and execution, like a sequencer.
-  What is cryptographic today: it cannot read a sealed order, the epoch clears at
-  one price, and collateral is self-custodied.
-- **Liquidity is a virtual AMM, not an external book.** Depth is whatever the
-  pool is seeded with — the trade we made for being able to seal orders at all.
-- **Testnet only.** Coston2, FXRP with no real value, unaudited.
-
-That list is on the `/verify` page too, next to the proofs, because a judge
-finding a limitation we hid is worse than a limitation we named.
-
-### Tests
-
-91 operator tests (bun) and 31 Solidity tests (forge), including fuzz tests for
-vault solvency and zero-sum PnL.
+Built for Flare Summer Signal. 91 operator tests and 31 Solidity tests, including
+fuzz tests for vault solvency and zero-sum PnL. The app, the operator, and the
+Intel TDX enclave are all live right now.
 ```
 
 ---

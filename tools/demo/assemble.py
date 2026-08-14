@@ -93,12 +93,15 @@ def cut(take, tmp):
         if span > narr + 0.25:
             # Ramp the footage down to the narration length rather than cutting
             # it — the scroll keeps moving, it just moves faster.
-            # Cap the ramp at 2.1x — the value that lands this cut at ~7 minutes. Beyond that the cursor teleports and a
+            # Cap the ramp at 2.8x. At 1.3x narration the dead stretches — explorer
+            # scrolls, the attack lab thinking, page loads — need to move faster or
+            # the cut runs long with nothing being said over them. Beyond ~3x the
+            # cursor teleports and a
             # scroll reads as a jump-cut — and the footage worth watching (a
             # settlement landing, a feed filling in) is exactly the footage
             # these long spans contain. Anything above the cap keeps its own
             # pace and the beat simply runs longer than its line.
-            speed = min(2.1, span / narr)
+            speed = min(2.8, span / narr)
             vf = f"setpts=PTS/{speed:.6f},fps=30"
             pad = 0.0
         else:
