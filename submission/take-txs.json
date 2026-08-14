@@ -1,0 +1,18 @@
+{
+ "public": {
+  "hash": "0x6453e9b7f10d3e0348b159ccc9e48801d96191a65a9c99a0ccdaf80839482e83",
+  "block": 34063537,
+  "method": "lockMargin",
+  "to": "0x047478DE7d2ed6B41dEFC14223764411288Db845",
+  "from": "0x0b6A564E9dC664b9223FFDAe35dD585cfC010B12",
+  "at": "2026-08-14T18:41:07.000000Z"
+ },
+ "private": {
+  "hash": "0x3a919c7d0e3c06771f4146fabd437287adb397c4d6630583d7067900b6689ef8",
+  "block": 34063562,
+  "method": "lockMargin",
+  "to": "0x047478DE7d2ed6B41dEFC14223764411288Db845",
+  "from": "0x0b6A564E9dC664b9223FFDAe35dD585cfC010B12",
+  "at": "2026-08-14T18:41:53.000000Z"
+ }
+}

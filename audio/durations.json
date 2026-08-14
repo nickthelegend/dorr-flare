@@ -26,5 +26,8 @@
  "verify": 5.611,
  "tee-live": 6.933,
  "honest": 13.76,
- "outro": 7.915
+ "outro": 7.915,
+ "tx-compare": 13.077,
+ "flow-explain": 16.149,
+ "attack-explain": 15.125
 }

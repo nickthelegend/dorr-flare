@@ -12,7 +12,7 @@
  *   node tools/demo/driver.mjs --take a
  */
 import { chromium } from "playwright";
-import { readFileSync, appendFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, appendFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -289,6 +289,8 @@ async function backToTrade(page) {
  *  the hash lives. Waits for it rather than falling back to an older tx, because
  *  showing a stale hash under "here is that order's transaction" is the exact
  *  kind of quiet substitution this take is meant not to do. */
+const MARGIN_TXS = {};
+
 async function marginTxAfter(since, label) {
   const deadline = Date.now() + 90000;
   while (Date.now() < deadline) {
@@ -296,7 +298,12 @@ async function marginTxAfter(since, label) {
       .then((r) => r.json()).then((d) => d.events ?? d).catch(() => []);
     const hit = (Array.isArray(evs) ? evs : []).find(
       (e) => e.type === "margin" && e.txHash && new Date(e.at ?? 0).getTime() >= since);
-    if (hit) { console.log(`  margin tx for ${label}: ${hit.txHash}`); return hit.txHash; }
+    if (hit) {
+      console.log(`  margin tx for ${label}: ${hit.txHash}`);
+      MARGIN_TXS[label.startsWith("public") ? "public" : "private"] = hit.txHash;
+      writeFileSync(resolve(ROOT, "../submission/take-txs.json"), JSON.stringify(MARGIN_TXS, null, 1));
+      return hit.txHash;
+    }
     await new Promise((r) => setTimeout(r, 2000));
   }
   throw new Error(`NO_MARGIN_TX: ${label} — the commit made no on-chain lock this take can show`);

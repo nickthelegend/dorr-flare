@@ -205,6 +205,226 @@ def title_card(path, lines, secs, tmp):
        path, "-loglevel", "error")
 
 
+def _ease(p):
+    return 1 - (1 - max(0.0, min(1.0, p))) ** 3
+
+
+def _fonts():
+    from PIL import ImageFont
+    HERE = os.path.dirname(__file__)
+    I = lambda n, sz: ImageFont.truetype(os.path.join(HERE, "fonts", n), sz)
+    return {"h": I("Inter-SemiBold.ttf", 40), "b": I("Inter-Regular.ttf", 24),
+            "s": I("Inter-Regular.ttf", 19), "m": I("RobotoMono.ttf", 20),
+            "ms": I("RobotoMono.ttf", 16), "n": I("Inter-SemiBold.ttf", 22)}
+
+
+def _mix(bg, col, a):
+    return tuple(int(bg[k] + (col[k] - bg[k]) * max(0.0, min(1.0, a))) for k in range(3))
+
+
+def _render(fdir, path, FPS=30):
+    sh("ffmpeg", "-y", "-framerate", str(FPS), "-i", os.path.join(fdir, "%05d.png"),
+       "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
+       path, "-loglevel", "error")
+
+
+def flow_card(path, secs, tmp):
+    """The path an order takes, drawn as it happens.
+
+    Five stages light up in sequence with a pulse travelling the connector
+    between them, so a judge who reads nothing else still sees where the order
+    goes and who checks it. Frame-by-frame because this ffmpeg has no drawtext.
+    """
+    from PIL import Image, ImageDraw
+    W, H, FPS = 1440, 900, 30
+    BG, PANEL = (11, 18, 32), (17, 26, 44)
+    BLUE, LIGHT, GREEN, WHITE, DIM = (44, 107, 255), (122, 166, 255), (52, 211, 153), (240, 245, 255), (110, 125, 150)
+    F = _fonts()
+    frames = int(secs * FPS)
+    fdir = os.path.join(tmp, "f_" + os.path.basename(path).replace(".mp4", ""))
+    os.makedirs(fdir, exist_ok=True)
+
+    stages = [
+        ("Your browser", ["you sign the order", "only a hash leaves"], BLUE),
+        ("The public feed", ["a commitment", "no side / size / price"], LIGHT),
+        ("Intel TDX enclave", ["matches it sealed", "signs the batch"], GREEN),
+        ("Flare contract", ["re-reads FTSO v2", "verifies the receipt"], LIGHT),
+        ("Settled", ["one price for the epoch", "margin locked on-chain"], BLUE),
+    ]
+    n = len(stages)
+    box_w, box_h, gap = 232, 200, 24
+    total = n * box_w + (n - 1) * gap
+    x0 = (W - total) // 2
+    y = 330
+    per = max(0.55, (secs - 1.4) / n)
+
+    for fr in range(frames):
+        t = fr / FPS
+        img = Image.new("RGB", (W, H), BG)
+        d = ImageDraw.Draw(img)
+        out = max(0.0, min(1.0, (secs - 0.5 - t) / 0.4))
+        head_a = _ease((t - 0.1) / 0.5) * out
+        d.text((x0, 190), "How one order travels", font=F["h"], fill=_mix(BG, WHITE, head_a))
+
+        for i, (title, subs, col) in enumerate(stages):
+            t0 = 0.45 + i * per
+            a = _ease((t - t0) / 0.55) * out
+            if a <= 0.01:
+                continue
+            bx = x0 + i * (box_w + gap)
+            rise = int(22 * (1 - _ease((t - t0) / 0.55)))
+            d.rounded_rectangle([bx, y + rise, bx + box_w, y + box_h + rise], radius=16,
+                                fill=_mix(BG, PANEL, a), outline=_mix(BG, col, a * 0.8), width=2)
+            d.text((bx + 20, y + 26 + rise), str(i + 1), font=F["n"], fill=_mix(BG, col, a))
+            d.text((bx + 20, y + 66 + rise), title, font=F["b"], fill=_mix(BG, WHITE, a))
+            for j, sub in enumerate(subs):
+                d.text((bx + 20, y + 108 + j * 28 + rise), sub, font=F["s"], fill=_mix(BG, DIM, a))
+
+            if i < n - 1:
+                cx0, cx1 = bx + box_w, bx + box_w + gap
+                cy = y + box_h // 2
+                # connector fills as the next stage arrives, with a travelling pulse
+                p = max(0.0, min(1.0, (t - t0 - per * 0.55) / (per * 0.45)))
+                d.line([cx0, cy, cx0 + int(gap * p), cy], fill=_mix(BG, col, a * 0.9), width=3)
+                if 0 < p < 1:
+                    px = cx0 + int(gap * p)
+                    d.ellipse([px - 5, cy - 5, px + 5, cy + 5], fill=_mix(BG, WHITE, a))
+
+        foot_a = _ease((t - (0.45 + n * per)) / 0.6) * out
+        if foot_a > 0.01:
+            d.text((x0, y + box_h + 56),
+                   "The venue never reads the order. The chain checks the result anyway.",
+                   font=F["b"], fill=_mix(BG, GREEN, foot_a))
+        img.save(os.path.join(fdir, f"{fr:05d}.png"))
+    _render(fdir, path)
+
+
+def tx_compare_card(path, secs, tmp, txs):
+    """The two real transactions, side by side.
+
+    Hashes come from submission/take-txs.json, which the driver writes from the
+    take that was actually recorded — there is no constant to fall back to, so a
+    missing file fails the cut rather than inventing a transaction.
+    """
+    from PIL import Image, ImageDraw
+    W, H, FPS = 1440, 900, 30
+    BG, PANEL = (11, 18, 32), (17, 26, 44)
+    WHITE, DIM, GREEN, AMBER, LIGHT = (240, 245, 255), (110, 125, 150), (52, 211, 153), (251, 191, 36), (122, 166, 255)
+    F = _fonts()
+    frames = int(secs * FPS)
+    fdir = os.path.join(tmp, "f_" + os.path.basename(path).replace(".mp4", ""))
+    os.makedirs(fdir, exist_ok=True)
+
+    def panel(kind):
+        t = txs[kind]
+        return [("tx", t["hash"][:22] + "\u2026"), ("method", t["method"]),
+                ("block", str(t["block"])), ("contract", t["to"][:16] + "\u2026"),
+                ("status", "success")]
+    cols = [("The order everyone could read", panel("public"), AMBER),
+            ("The order nobody could read", panel("private"), GREEN)]
+    absent = ["side", "size", "price", "leverage"]
+
+    pw, ph, px0 = 600, 330, 96
+    for fr in range(frames):
+        t = fr / FPS
+        img = Image.new("RGB", (W, H), BG)
+        d = ImageDraw.Draw(img)
+        out = max(0.0, min(1.0, (secs - 0.5 - t) / 0.4))
+        d.text((px0, 120), "Both trades, on Flare", font=F["h"], fill=_mix(BG, WHITE, _ease((t - 0.1) / 0.5) * out))
+
+        for c, (title, rows, col) in enumerate(cols):
+            t0 = 0.4 + c * 0.5
+            a = _ease((t - t0) / 0.6) * out
+            if a <= 0.01:
+                continue
+            bx = px0 + c * (pw + 48)
+            slide = int(30 * (1 - _ease((t - t0) / 0.6))) * (1 if c else -1)
+            d.rounded_rectangle([bx + slide, 200, bx + pw + slide, 200 + ph], radius=18,
+                                fill=_mix(BG, PANEL, a), outline=_mix(BG, col, a * 0.7), width=2)
+            d.text((bx + 28 + slide, 226), title, font=F["b"], fill=_mix(BG, col, a))
+            for j, (k, v) in enumerate(rows):
+                ra = _ease((t - t0 - 0.35 - j * 0.16) / 0.4) * out
+                if ra <= 0.01:
+                    continue
+                ry = 278 + j * 40
+                d.text((bx + 28 + slide, ry), k, font=F["s"], fill=_mix(BG, DIM, ra))
+                d.text((bx + 168 + slide, ry - 2), v, font=F["ms"], fill=_mix(BG, WHITE, ra))
+
+        t1 = 0.4 + 2 * 0.5 + 1.5
+        a2 = _ease((t - t1) / 0.6) * out
+        if a2 > 0.01:
+            d.text((px0, 556), "What neither transaction carries", font=F["b"], fill=_mix(BG, WHITE, a2))
+            for j, word in enumerate(absent):
+                wa = _ease((t - t1 - 0.25 - j * 0.22) / 0.45) * out
+                if wa <= 0.01:
+                    continue
+                bx = px0 + j * 250
+                d.rounded_rectangle([bx, 606, bx + 214, 666], radius=12,
+                                    fill=_mix(BG, PANEL, wa), outline=_mix(BG, DIM, wa * 0.6), width=1)
+                d.text((bx + 26, 624), word, font=F["b"], fill=_mix(BG, DIM, wa))
+                # struck through — the field exists on other venues, not in this record
+                d.line([bx + 18, 636, bx + 196, 636], fill=_mix(BG, (239, 68, 68), wa * 0.85), width=3)
+            fa = _ease((t - t1 - 1.3) / 0.6) * out
+            if fa > 0.01:
+                d.text((px0, 700), "Same proof. None of the exposure.", font=F["h"], fill=_mix(BG, GREEN, fa))
+        img.save(os.path.join(fdir, f"{fr:05d}.png"))
+    _render(fdir, path)
+
+
+def attack_card(path, secs, tmp):
+    """Why the sandwich cannot be built — the two inputs it needs, and what it gets.
+
+    Two lanes race: on a readable order the bot assembles direction and size and
+    lands the sandwich; on a hash both inputs stay empty and the lane dead-ends.
+    """
+    from PIL import Image, ImageDraw
+    W, H, FPS = 1440, 900, 30
+    BG, PANEL = (11, 18, 32), (17, 26, 44)
+    WHITE, DIM, GREEN, RED = (240, 245, 255), (110, 125, 150), (52, 211, 153), (239, 68, 68)
+    F = _fonts()
+    frames = int(secs * FPS)
+    fdir = os.path.join(tmp, "f_" + os.path.basename(path).replace(".mp4", ""))
+    os.makedirs(fdir, exist_ok=True)
+
+    lanes = [
+        ("Order is readable", RED, [("direction", "LONG"), ("size", "1,669,496 FLR")],
+         "sandwich assembled  \u2192  $204.95 taken"),
+        ("Order is a hash", GREEN, [("direction", "\u2014"), ("size", "\u2014")],
+         "nothing to assemble  \u2192  $0.00"),
+    ]
+    for fr in range(frames):
+        t = fr / FPS
+        img = Image.new("RGB", (W, H), BG)
+        d = ImageDraw.Draw(img)
+        out = max(0.0, min(1.0, (secs - 0.5 - t) / 0.4))
+        d.text((120, 130), "A sandwich needs two inputs", font=F["h"], fill=_mix(BG, WHITE, _ease((t - 0.1) / 0.5) * out))
+        for i, (title, col, fields, verdict) in enumerate(lanes):
+            t0 = 0.5 + i * 0.9
+            a = _ease((t - t0) / 0.55) * out
+            if a <= 0.01:
+                continue
+            y = 214 + i * 236
+            d.rounded_rectangle([120, y, 1320, y + 196], radius=18, fill=_mix(BG, PANEL, a),
+                                outline=_mix(BG, col, a * 0.7), width=2)
+            d.text((156, y + 28), title, font=F["b"], fill=_mix(BG, col, a))
+            for j, (k, v) in enumerate(fields):
+                fa = _ease((t - t0 - 0.4 - j * 0.3) / 0.45) * out
+                if fa <= 0.01:
+                    continue
+                bx = 156 + j * 330
+                d.text((bx, y + 88), k, font=F["s"], fill=_mix(BG, DIM, fa))
+                d.text((bx, y + 118), v, font=F["m"], fill=_mix(BG, WHITE if v != "\u2014" else DIM, fa))
+            va = _ease((t - t0 - 1.15) / 0.5) * out
+            if va > 0.01:
+                d.text((830, y + 108), verdict, font=F["b"], fill=_mix(BG, col, va))
+        fa = _ease((t - 3.1) / 0.6) * out
+        if fa > 0.01:
+            d.text((120, 700), "0 / 25,000 real SHA-256 preimages recovered. The attack has no input.",
+                   font=F["b"], fill=_mix(BG, GREEN, fa))
+        img.save(os.path.join(fdir, f"{fr:05d}.png"))
+    _render(fdir, path)
+
+
 def draw_lock(d, cx, cy, scale, alpha, bg):
     """The dorr mark, drawn.
 
@@ -350,10 +570,12 @@ def data_card(path, heading, rows, secs, tmp, highlight=None):
 def main():
     tmp = tempfile.mkdtemp(prefix="dorr-cut-")
     all_clips = []
+    TIMELINE = []   # (beat id, clip path) in final order — the srt's source of truth
 
     intro = os.path.join(tmp, "intro.mp4")
     logo_card(intro, DUR.get("intro", 17.0) + 0.6, tmp)
-    all_clips.append(narrate(intro, "intro", tmp))
+    TIMELINE.append(("intro", narrate(intro, "intro", tmp)))
+    all_clips.append(TIMELINE[-1][1])
 
     # The app footage, split so the attestation panels land where the narration
     # puts them — straight after the order, not bolted onto the end.
@@ -381,13 +603,27 @@ def main():
         ("contract", "0x047478DE7d2ed6B41dEFC14223764411288Db845"),
     ], DUR["tx-details"] + 0.6, tmp)
 
+    # The two transactions this take actually produced. No constant fallback:
+    # a missing file means the cut cannot honestly claim "here they are".
+    txpath = os.path.join(ROOT, "submission", "take-txs.json")
+    if not os.path.exists(txpath):
+        raise SystemExit("NO_TAKE_TXS: submission/take-txs.json missing — re-record so the "
+                         "compare slide shows this take's real transactions")
+    take_txs = json.load(open(txpath))
+
+    mid["tx-compare"] = lambda o: tx_compare_card(o, DUR["tx-compare"] + 0.6, tmp, take_txs)
+    mid["flow-explain"] = lambda o: flow_card(o, DUR["flow-explain"] + 0.6, tmp)
+    mid["attack-explain"] = lambda o: attack_card(o, DUR["attack-explain"] + 0.6, tmp)
+
     for i, c in enumerate(clips):
-        all_clips.append(c)
+        all_clips.append(c); TIMELINE.append((ids[i] if i < len(ids) else None, c))
         after = ids[i] if i < len(ids) else None
-        if after == "positions":
-            for sid in ("tee-attest", "tee-bound", "tx-details"):
-                o = os.path.join(tmp, f"{sid}.mp4"); mid[sid](o)
-                all_clips.append(narrate(o, sid, tmp))
+        for sid in {"explorer-private": ["tx-compare"],
+                    "attack-run": ["attack-explain"],
+                    "positions": ["tee-attest", "tee-bound", "tx-details", "flow-explain"]}.get(after, []):
+            o = os.path.join(tmp, f"{sid}.mp4"); mid[sid](o)
+            nc = narrate(o, sid, tmp)
+            all_clips.append(nc); TIMELINE.append((sid, nc))
 
     honest = os.path.join(tmp, "honest.mp4")
     title_card(honest, [
@@ -396,7 +632,8 @@ def main():
         ("liquidity is a vAMM, not an external book", 26, -30, (203, 213, 225)),
         ("testnet  ·  unaudited", 26, 20, (203, 213, 225)),
     ], DUR.get("honest", 18.0) + 0.6, tmp)
-    all_clips.append(narrate(honest, "honest", tmp))
+    TIMELINE.append(("honest", narrate(honest, "honest", tmp)))
+    all_clips.append(TIMELINE[-1][1])
 
     outro = os.path.join(tmp, "outro.mp4")
     title_card(outro, [
@@ -404,7 +641,8 @@ def main():
         ("github.com/nickthelegend/dorr-flare", 28, -10, (157, 180, 255)),
         ("every claim is checkable on-chain", 22, 60, (127, 142, 163)),
     ], DUR.get("outro", 14.0) + 0.6, tmp)
-    all_clips.append(narrate(outro, "outro", tmp))
+    TIMELINE.append(("outro", narrate(outro, "outro", tmp)))
+    all_clips.append(TIMELINE[-1][1])
 
     # Concat needs identical streams; the two cards have no audio, so give them
     # silence rather than letting concat drop the audio track for everything after.
@@ -436,21 +674,31 @@ def main():
        "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
        "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", master, "-loglevel", "error")
 
-    # Subtitles from the measured durations — real .srt, nothing burned in.
-    srt, t, n = [], 0.0, 1
+    # Subtitles from what was actually concatenated.
+    #
+    # This used to walk the beat log, which does not know about slides — so every
+    # caption after the first spliced panel drifted by the length of that panel,
+    # and by the end it was a minute out. Walk the assembled timeline instead and
+    # measure each clip.
     def ts(x):
-        h, m, s = int(x // 3600), int(x % 3600 // 60), x % 60
-        return f"{h:02d}:{m:02d}:{s:06.3f}".replace(".", ",")
-    t = 5.0  # intro
+        h, m, s_ = int(x // 3600), int(x % 3600 // 60), x % 60
+        return f"{h:02d}:{m:02d}:{s_:06.3f}".replace(".", ",")
     spec = json.load(open(os.path.join(ROOT, "narration.json")))
-    for take in ("a", "b", "c"):
-        if not os.path.exists(os.path.join(ROOT, f"beat-log-{take}.txt")): continue
-        for b in beats(take):
-            d = DUR.get(b["id"])
-            if d is None: continue
-            txt = next((l["text"] for l in spec["lines"] if l["id"] == b["id"]), "")
-            srt.append(f"{n}\n{ts(t)} --> {ts(t + d)}\n{txt}\n")
-            t += d; n += 1
+    texts = {l["id"]: l["text"] for l in spec["lines"]}
+    srt, t, n = [], 0.0, 1
+    # Measure the NORMALISED clips, not the ones handed to the muxer. The
+    # normalise step runs `-shortest`, which trims a card to its narration and
+    # takes ~0.6s off every slide — measuring before that put the captions six
+    # seconds ahead of the picture by the attack scene.
+    if len(TIMELINE) != len(normed):
+        raise SystemExit(f"TIMELINE_DESYNC: {len(TIMELINE)} tracked vs {len(normed)} concatenated")
+    for (bid, _), clip in zip(TIMELINE, normed):
+        dur_c = vdur(clip)
+        txt = texts.get(bid)
+        if txt:
+            srt.append(f"{n}\n{ts(t)} --> {ts(t + min(dur_c, DUR.get(bid, dur_c)))}\n{txt}\n")
+            n += 1
+        t += dur_c
     open(os.path.join(OUT, "dorr-flare-demo.srt"), "w").write("\n".join(srt))
 
     print(f"\nmaster : {master}  {vdur(master):.1f}s")

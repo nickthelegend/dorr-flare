@@ -63,8 +63,16 @@
       "text": "And here is the private order's transaction. Put them side by side: the same kind of record, and neither one names a side, a size, or a price. The chain never saw the difference. The order feed did — the public one was readable while it waited, the private one was a hash."
     },
     {
+      "id": "tx-compare",
+      "text": "Here they are side by side. Both real, both on Flare, both saying the same thing: this trader reserved this much collateral. Neither one says which way the trade went, how big it was, or at what price. The chain got the proof. Nobody got the intent."
+    },
+    {
       "id": "positions",
       "text": "We can still see our own position — entry price, leverage, and where it would be liquidated. Hidden from everyone else, not from us."
+    },
+    {
+      "id": "flow-explain",
+      "text": "So here is the whole path, start to finish. You sign the order in your browser and only a fingerprint leaves. The sealed order reaches the enclave, which matches it inside the processor and signs a receipt for the batch. Flare checks that receipt, and checks our price against its own oracle, before any of it is allowed to stand."
     },
     {
       "id": "tee-attest",
@@ -85,6 +93,10 @@
     {
       "id": "attack-run",
       "text": "With the order readable, the attacker buys ahead of it, the trader fills at a worse price, and the attacker closes out two hundred dollars richer. That money came from the trader. With the order hidden there is only a fingerprint. Twenty-five thousand real attempts to reverse it, none of them land, and the attack cannot even be built: no direction, no size, nothing to get in front of."
+    },
+    {
+      "id": "attack-explain",
+      "text": "This is why it fails. To sandwich you, a bot needs two things: which way you are going, and how big. A public order feed hands it both. Here it gets a fingerprint of an order it has never seen, which is indistinguishable from noise. There is no direction to trade against and no size to size against."
     },
     {
       "id": "attack-sealed",
