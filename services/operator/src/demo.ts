@@ -278,11 +278,11 @@ export function runAttackLab(p: AbParams): AttackLabResult {
 
   const publicRun = {
     steps: [
-      { ms: 0, actor: "bot", ok: true, text: "🤖 Sandwich bot scanning the public mempool / order flow…" },
-      { ms: 0, actor: "bot", ok: true, text: `👁️ Order spotted IN THE CLEAR: ${p.side} ${sizeStr} ${m.base} · ${p.leverage}x — full details visible` },
-      { ms: sandwichMs, actor: "bot", ok: true, text: `⚡ FRONT-RUN: bot buys ahead, pushing the mark to ${ab.public.botFrontRunPrice.toFixed(6)}` },
-      { ms: sandwichMs, actor: "victim", ok: true, text: `🎯 Victim's order executes at ${ab.public.victimEntry.toFixed(6)} — worse than fair (${idx.toFixed(6)})` },
-      { ms: sandwichMs, actor: "bot", ok: true, text: `💰 BACK-RUN: bot unwinds at ${ab.public.botExitPrice.toFixed(6)}, pocketing $${ab.public.botProfitUsd.toFixed(2)}` },
+      { ms: 0, actor: "bot", ok: true, text: "📡 Reading dorr's public order feed — the same endpoint anyone can poll" },
+      { ms: 0, actor: "bot", ok: true, text: `👁️ Order is readable in full: ${p.side} ${sizeStr} ${m.base} · ${p.leverage}x` },
+      { ms: sandwichMs, actor: "bot", ok: true, text: `⚡ FRONT-RUN filled on the live vAMM — mark moves to ${ab.public.botFrontRunPrice.toFixed(6)}` },
+      { ms: sandwichMs, actor: "victim", ok: true, text: `🎯 Victim's order fills at ${ab.public.victimEntry.toFixed(6)} — worse than fair (${idx.toFixed(6)})` },
+      { ms: sandwichMs, actor: "bot", ok: true, text: `💰 BACK-RUN filled — attacker closes at ${ab.public.botExitPrice.toFixed(6)}, up $${ab.public.botProfitUsd.toFixed(2)}` },
       { ms: sandwichMs, actor: "victim", ok: false, text: `✗ SANDWICHED — victim overpaid $${ab.public.victimExtraCostUsd.toFixed(2)} (${ab.public.victimSlippageBps.toFixed(1)} bps)` },
     ] as AttackStep[],
     victimEntry: ab.public.victimEntry,
@@ -319,7 +319,7 @@ export function runAttackLab(p: AbParams): AttackLabResult {
 
   const privateRun = {
     steps: [
-      { ms: 0, actor: "bot", ok: true, text: "🤖 Sandwich bot scanning the public mempool / order flow…" },
+      { ms: 0, actor: "bot", ok: true, text: "📡 Reading the same public feed — this time the order was sent privately" },
       { ms: 0, actor: "dorr", ok: false, text: `🔒 Only the commitment is public: ${commitment.slice(0, 18)}… — no side, size, price, or leverage` },
       { ms: 0, actor: "bot", ok: false, text: `🔓 Bot attempts to crack the commitment — ${bruteForceAttempts.toLocaleString()} SHA-256 preimage guesses…` },
       { ms: bruteForceMs, actor: "dorr", ok: false, text: `❌ ${bruteForceMatches} / ${bruteForceAttempts.toLocaleString()} matches in ${bruteForceMs}ms (${rate.toLocaleString()}/s) — at that rate the 2¹²⁸ nonce space takes ~10^${yearsToExhaust.toFixed(0)} years` },

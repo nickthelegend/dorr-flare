@@ -7,7 +7,7 @@ the last frame. The pad is clamped at zero because the arithmetic lands a
 millisecond negative when the two are nearly equal, and ffmpeg rejects a
 negative tpad outright rather than treating it as no-op.
 """
-import json, os, subprocess, sys, wave, tempfile
+import glob, json, os, subprocess, sys, wave, tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 AUDIO = os.path.join(ROOT, "audio")
@@ -33,9 +33,38 @@ def beats(take):
             rows.append({"ms": int(p[1]), "id": p[2], "signing": "SIGNING" in ln})
     return rows
 
+def source_video(take):
+    """The recording this beat log belongs to.
+
+    raw-take-a.mp4 used to be produced by hand, and two "final" cuts were
+    assembled from a three-takes-old file while the fresh recording sat in the
+    video dir untouched — the app copy on screen was stale and nothing said so.
+    Transcode the newest capture whenever it is newer, and refuse outright if
+    the source predates the beat log it is being cut against.
+    """
+    mp4 = os.path.join(ROOT, f"raw-take-{take}.mp4")
+    vdir = os.environ.get("DEMO_VIDEO_DIR") or f"/tmp/dorr-video/{take}"
+    webms = sorted(glob.glob(os.path.join(vdir, "*.webm")), key=os.path.getmtime)
+    log = os.path.join(ROOT, f"beat-log-{take}.txt")
+    if webms:
+        w = webms[-1]
+        if not os.path.exists(mp4) or os.path.getmtime(w) > os.path.getmtime(mp4):
+            print(f"  transcoding {os.path.basename(w)} → raw-take-{take}.mp4")
+            subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", w,
+                            "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+                            "-pix_fmt", "yuv420p", mp4], check=True)
+    if not os.path.exists(mp4):
+        raise SystemExit(f"NO_SOURCE_VIDEO: no {mp4} and no .webm in {vdir}")
+    if os.path.exists(log) and os.path.getmtime(mp4) < os.path.getmtime(log) - 120:
+        raise SystemExit(
+            f"STALE_SOURCE: {os.path.basename(mp4)} is older than {os.path.basename(log)} — "
+            "it is from a previous take. Re-record, or delete the stale mp4.")
+    return mp4
+
+
 def cut(take, tmp):
     """One clip per beat, narration muxed, returned in order."""
-    src = os.path.join(ROOT, f"raw-take-{take}.mp4")
+    src = source_video(take)
     total = vdur(src)
     rows = beats(take)
     # Derive the offset instead of assuming it.

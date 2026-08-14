@@ -80,7 +80,8 @@ panel off mid-column.
 
 | id | beat | |
 |---|---|---|
-| `explorer-tx` | Explorer: the settled batch transaction, logs expanded. | |
+| `explorer-public` | Explorer: the public order's own `lockMargin` transaction. | |
+| `explorer-private` | The private order's transaction beside it — the same kind of record, neither naming side, size or price. The exposure was in the feed, not the chain. | |
 | `explorer-vault` | The vault's transaction list — deposits and depositor-signed withdrawals, no operator path among them. | |
 | `verify` | `/verify` — contracts from the operator, attestation from the enclave. Nothing typed by hand. | |
 | `tee-live` | The page states **"Hardware attestation is live"**, `live · dstack`, and that the operator holds no attestation key. | |
@@ -89,7 +90,7 @@ panel off mid-column.
 | `honest` | 🎞 What is *not* proven: trusted operator for matching, vAMM not an external book, testnet, unaudited. Said plainly. | 🎞 |
 | `outro` | 🎞 Where to check every claim — repo, contracts, tx hashes, `/verify`. Thanks for watching. | 🎞 |
 
-**28 beats.** Narration ~6:10; holds and scroll settles bring it to ~7:00.
+**22 recorded beats + 5 slides.** Narration ~6:10; holds and scroll settles bring it to ~7:00.
 
 ---
 

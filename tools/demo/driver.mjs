@@ -28,6 +28,7 @@ const URLS = {
   hadal: "https://hadal-flare.vercel.app",
   molfi: "https://molfi.fun",
   explorer: "https://coston2-explorer.flare.network",
+  operator: "https://dorr-operator-9449c5bb5086.herokuapp.com",
 };
 
 // Testnet only. Asserted rather than trusted: a mainnet key here would sign
@@ -282,11 +283,36 @@ async function backToTrade(page) {
   }
 }
 
+/** The order's own on-chain record: the margin lock the commit route makes on
+ *  DorrBatchSettlement. It is relayer-signed, so it never appears in TXS (which
+ *  only tracks what the demo wallet signs) — the operator's event log is where
+ *  the hash lives. Waits for it rather than falling back to an older tx, because
+ *  showing a stale hash under "here is that order's transaction" is the exact
+ *  kind of quiet substitution this take is meant not to do. */
+async function marginTxAfter(since, label) {
+  const deadline = Date.now() + 90000;
+  while (Date.now() < deadline) {
+    const evs = await fetch(`${URLS.operator}/events?limit=25`)
+      .then((r) => r.json()).then((d) => d.events ?? d).catch(() => []);
+    const hit = (Array.isArray(evs) ? evs : []).find(
+      (e) => e.type === "margin" && e.txHash && new Date(e.at ?? 0).getTime() >= since);
+    if (hit) { console.log(`  margin tx for ${label}: ${hit.txHash}`); return hit.txHash; }
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  throw new Error(`NO_MARGIN_TX: ${label} — the commit made no on-chain lock this take can show`);
+}
+
 /** Open a transaction on the Flare explorer and hold for its beat. */
 async function showTx(page, hash, beatId) {
   if (!hash) throw new Error(`NO_TX_FOR_BEAT: ${beatId} narrates a transaction this take never sent`);
   await page.goto(`${URLS.explorer}/tx/${hash}`, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(2600);
+  // Blockscout renders a skeleton first. A fixed wait put the beat on screen
+  // while the page was still grey placeholder bars, under narration saying
+  // "here is the transaction" — wait for the fields that carry the claim.
+  await until(page, `explorer rendered ${beatId}`,
+    () => /Transaction fee/i.test(document.body.innerText) &&
+          /Success|Confirmed|Pending/i.test(document.body.innerText), 45000);
+  await page.waitForTimeout(900);
   await line(page, beatId);
   await smoothTo(page, 420, 2400);
   await hold(page, beatId);
@@ -453,6 +479,7 @@ const takes = {
     await line(page, "privacy"); await hold(page, "privacy");
 
     // PUBLIC — the order everyone can read
+    const tPub = Date.now() - 3000;
     await line(page, "trade-public", { signing: true });
     await clickAt(page, "button:has-text('publicly')");
     await signingOverlay(page, true, "Signing Transaction");
@@ -463,8 +490,7 @@ const takes = {
 
     await line(page, "feed-public"); await hold(page, "feed-public");
 
-    const pubTx = TXS[TXS.length - 1];
-    await showTx(page, pubTx, "explorer-public");
+    await showTx(page, await marginTxAfter(tPub, "public order"), "explorer-public");
 
     // PRIVATE — the same trade, sealed
     await backToTrade(page);
@@ -474,6 +500,7 @@ const takes = {
     await clickAt(page, "button:has-text('Private')");
     await typeInto(page, "input[inputmode=decimal]", "0.05");
 
+    const tPriv = Date.now() - 3000;
     await line(page, "commit", { signing: true });
     await clickAt(page, "button:has-text('privately')");
     await signingOverlay(page, true, "Signing Transaction");
@@ -483,7 +510,7 @@ const takes = {
     await hold(page, "commit");
 
     await line(page, "feed"); await hold(page, "feed");
-    await showTx(page, TXS[TXS.length - 1], "explorer-private");
+    await showTx(page, await marginTxAfter(tPriv, "private order"), "explorer-private");
 
     await backToTrade(page);
     await smoothTo(page, 700, 1600);
@@ -521,7 +548,10 @@ const takes = {
     await until(page, "verify loaded", () => /WHAT THE CHAIN ACTUALLY CHECKS/i.test(document.body.innerText), 40000);
     await line(page, "verify"); await smoothTo(page, 650, 2400); await hold(page, "verify");
 
-    await until(page, "hardware live", () => /Hardware attestation is live/i.test(document.body.innerText), 30000);
+    // The page states the hardware in the proof column now; assert the claim the
+    // narration makes, not the old wording.
+    await until(page, "hardware live",
+      () => /running inside Intel TDX and signing with it/i.test(document.body.innerText), 30000);
     await smoothTo(page, 1700, 2400);
     await line(page, "tee-live"); await hold(page, "tee-live");
   },

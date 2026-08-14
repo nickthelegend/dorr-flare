@@ -257,11 +257,12 @@ export function AttackLabBody() {
         </h2>
         <p className="text-xs text-muted-foreground flex items-center gap-1.5">
           <MarketIcon base={base} size={14} />
-          Same {formatUsd(1000, 0)} FXRP · 10x {side} on {symbol}. A front-running bot attacks it on a
-          transparent DEX, then tries the same on dorr.
+          Same {formatUsd(1000, 0)} FXRP · 10x {side} on {symbol}, attacked the way a front-runner
+          would attack it — first with the order readable, then with it hidden.
         </p>
         <p className="text-[10px] text-muted-foreground/80">
-          Real fills on the live vAMM — reserves are restored afterwards, so no open position moves.
+          Every fill below is executed against the live vAMM at its current reserves, and the
+          crack attempt is real SHA-256. Reserves are restored afterwards, so no open position moves.
         </p>
       </div>
 
@@ -301,7 +302,7 @@ export function AttackLabBody() {
 
       {!result && !error && (
         <div className="rounded-lg border border-dashed border-border p-8 text-center text-xs text-muted-foreground">
-          Run the attack to watch a sandwich bot sandwich the order on a transparent DEX — then watch the
+          Run it to watch the order get front-run while it is readable — then watch the
           exact same attack fail against dorr.
         </div>
       )}
@@ -742,7 +743,7 @@ export function DemoShowcase() {
       >
         <DialogTitle className="sr-only">dorr MEV Attack Lab</DialogTitle>
         <DialogDescription className="sr-only">
-          Run a sandwich attack against a transparent DEX and watch the same attack fail against dorr — plus the
+          Front-run a readable order, then try the identical attack on a hidden one — plus the
           uniform-price batch auction and a side-by-side A/B comparison.
         </DialogDescription>
         <Tabs

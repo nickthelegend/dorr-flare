@@ -32,7 +32,16 @@ type Attestation = {
   signer: string | null;
   teeId: string;
   measurement: string;
-  hardwareAttestation: { available: boolean; mode: string; note: string; imageDigest?: string };
+  hardwareAttestation: {
+    available: boolean;
+    mode: string;
+    note: string;
+    imageDigest?: string;
+    /** hex quote — its length is the honest way to state the size on screen */
+    quote?: string;
+    quoteHash?: string;
+    reportData?: string;
+  };
   onChainVerification: { contract: string | null; checks: string[]; note: string };
 };
 
@@ -131,6 +140,16 @@ export default function VerifyClient() {
                 </ul>
               </li>
               <li>
+                <span className="text-white">The hardware.</span>{" "}
+                {hw === undefined
+                  ? "Reading the enclave\u2026"
+                  : hw?.available
+                    ? `The matching engine is running inside Intel TDX and signing with it — a ${
+                        hw.quote ? (hw.quote.length - 2) / 2 : 0
+                      }-byte quote from the ${hw.mode ?? "dstack"} guest agent, with report_data set to the batch payload hash. The signature covers this batch, not merely the fact that an enclave exists.`
+                    : "No hardware attestation is being served right now, and this page says so rather than substituting a self-declared image digest."}
+              </li>
+              <li>
                 <span className="text-white">The key the matching engine cannot reach.</span> The
                 operator delegates batch signing to the enclave and holds no attestation key, so it
                 cannot forge a quote even for itself. Delegating is safe because the chain checks the
@@ -155,15 +174,11 @@ export default function VerifyClient() {
             </h2>
             <ul className="mt-4 space-y-3 text-sm leading-relaxed text-white/75">
               <li>
-                <span className="text-white">
-                  {hw === undefined
-                    ? "Reading the enclave\u2026"
-                    : hw?.available
-                      ? "Hardware attestation is live."
-                      : "There is no hardware attestation here."}
-                </span>{" "}
-                {hw?.note ??
-                  "The enclave reports its own status; this line is whatever it says, not what we would like it to say."}
+                <span className="text-white">The enclave&rsquo;s identity is not sealed to the silicon.</span>{" "}
+                Its signing seed comes from the environment, which keeps the on-chain registrations
+                valid across redeploys but means the host operator could read it. One attested
+                machine also serves our sibling projects under separate derived identities, so the
+                blast radius is shared.
               </li>
               <li>
                 <span className="text-white">The clearing arithmetic is not ZK-proven.</span> The
