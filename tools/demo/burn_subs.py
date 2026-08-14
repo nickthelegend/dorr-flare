@@ -20,9 +20,10 @@ SRT = sys.argv[2] if len(sys.argv) > 2 else os.path.join(OUT, "dorr-flare-demo.s
 DST = sys.argv[3] if len(sys.argv) > 3 else os.path.join(OUT, "dorr-flare-demo-subtitled.mp4")
 
 W, H = 1440, 900
-FONT = ImageFont.truetype(os.path.join(HERE, "fonts", "Inter-Regular.ttf"), 25)
-PAD_X, PAD_Y, LINE_H, BOTTOM = 22, 14, 33, 34
-MAX_TEXT_W = 1120
+FONT = ImageFont.truetype(os.path.join(HERE, "fonts", "Inter-Regular.ttf"), 21)
+PAD_X, PAD_Y, LINE_H, BOTTOM = 18, 11, 28, 28
+MAX_TEXT_W = 880
+MAX_CHUNK = 88          # characters per caption — two lines at this width
 
 
 def cues(path):
@@ -41,6 +42,42 @@ def cues(path):
     return out
 
 
+def split_cue(a, b, text):
+    """One caption per phrase, not one per narration line.
+
+    A whole line of narration is up to twenty seconds of speech; rendered as a
+    single plate it was four lines tall and sat over the slide it was explaining.
+    Break at sentence ends first, then at clause commas, then on words, and give
+    each chunk a share of the cue proportional to its length.
+    """
+    parts, cur = [], ""
+    tokens = re.split(r"(?<=[.!?:]) +", text)
+    for tok in tokens:
+        while len(tok) > MAX_CHUNK:
+            cut = tok.rfind(",", 0, MAX_CHUNK) + 1 or tok.rfind(" ", 0, MAX_CHUNK)
+            if cut <= 0:
+                cut = MAX_CHUNK
+            parts.append(tok[:cut].strip())
+            tok = tok[cut:].strip()
+        if not cur:
+            cur = tok
+        elif len(cur) + len(tok) + 1 <= MAX_CHUNK:
+            cur = f"{cur} {tok}"
+        else:
+            parts.append(cur)
+            cur = tok
+    if cur:
+        parts.append(cur)
+    total = sum(len(x) for x in parts) or 1
+    out, t = [], a
+    for i, x in enumerate(parts):
+        share = (b - a) * len(x) / total
+        end = b if i == len(parts) - 1 else min(b, t + share)
+        out.append((t, end, x))
+        t = end
+    return out
+
+
 def wrap(text, draw):
     """Greedy wrap to MAX_TEXT_W, measured rather than guessed at a char count."""
     words, lines, cur = text.split(), [], ""
@@ -54,7 +91,12 @@ def wrap(text, draw):
             cur = w
     if cur:
         lines.append(cur)
-    return lines[-4:]          # a caption taller than four lines is a wall, not a caption
+    # Never silently truncate a caption. Dropping the tail of a sentence is the
+    # kind of quiet loss that looks fine in a spot check and is wrong everywhere
+    # else — if the splitter ever hands over something too long, say so.
+    if len(lines) > 2:
+        raise SystemExit(f"CAPTION_TOO_LONG ({len(lines)} lines): {text!r}")
+    return lines
 
 
 def plate(text, path):
@@ -73,9 +115,15 @@ def plate(text, path):
 
 
 def main():
-    cs = cues(SRT)
+    cs = [c for cue in cues(SRT) for c in split_cue(*cue)]
     if not cs:
         raise SystemExit(f"NO_CUES: {SRT} parsed to nothing")
+    # Rewrite the sidecar too — short cues are better on YouTube for the same reason.
+    def fmt(x):
+        h, m, sec = int(x // 3600), int(x % 3600 // 60), x % 60
+        return f"{h:02d}:{m:02d}:{sec:06.3f}".replace(".", ",")
+    open(SRT, "w").write("\n".join(
+        f"{i+1}\n{fmt(a)} --> {fmt(b)}\n{t}\n" for i, (a, b, t) in enumerate(cs)))
     tmp = tempfile.mkdtemp(prefix="dorr-subs-")
     args = ["ffmpeg", "-y", "-i", SRC]
     for i, (_, _, txt) in enumerate(cs):
