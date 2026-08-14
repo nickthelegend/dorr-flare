@@ -355,15 +355,27 @@ def tx_compare_card(path, secs, tmp, txs):
         if a2 > 0.01:
             d.text((px0, 556), "What neither transaction carries", font=F["b"], fill=_mix(BG, WHITE, a2))
             for j, word in enumerate(absent):
-                wa = _ease((t - t1 - 0.25 - j * 0.22) / 0.45) * out
+                t2 = t1 + 0.25 + j * 0.22
+                wa = _ease((t - t2) / 0.45) * out
                 if wa <= 0.01:
                     continue
                 bx = px0 + j * 250
+                # The field name stays legible. A line drawn through the middle of
+                # the word fought the letterforms and read as a rendering fault —
+                # the absence is carried by a mark beside the name instead.
                 d.rounded_rectangle([bx, 606, bx + 214, 666], radius=12,
-                                    fill=_mix(BG, PANEL, wa), outline=_mix(BG, DIM, wa * 0.6), width=1)
-                d.text((bx + 26, 624), word, font=F["b"], fill=_mix(BG, DIM, wa))
-                # struck through — the field exists on other venues, not in this record
-                d.line([bx + 18, 636, bx + 196, 636], fill=_mix(BG, (239, 68, 68), wa * 0.85), width=3)
+                                    fill=_mix(BG, PANEL, wa), outline=_mix(BG, DIM, wa * 0.45), width=1)
+                d.text((bx + 24, 624), word, font=F["b"], fill=_mix(BG, WHITE, wa * 0.9))
+                # the mark lands a beat after the chip, and scales as it lands
+                mp = _ease((t - t2 - 0.18) / 0.32)
+                if mp > 0.02:
+                    ma = mp * out
+                    cx, cy, r = bx + 178, 636, 5 + 8 * mp
+                    red = (239, 68, 68)
+                    d.ellipse([cx - r, cy - r, cx + r, cy + r], outline=_mix(BG, red, ma * 0.9), width=2)
+                    k = r * 0.42
+                    d.line([cx - k, cy - k, cx + k, cy + k], fill=_mix(BG, red, ma), width=2)
+                    d.line([cx - k, cy + k, cx + k, cy - k], fill=_mix(BG, red, ma), width=2)
             fa = _ease((t - t1 - 1.3) / 0.6) * out
             if fa > 0.01:
                 d.text((px0, 700), "Same proof. None of the exposure.", font=F["h"], fill=_mix(BG, GREEN, fa))
