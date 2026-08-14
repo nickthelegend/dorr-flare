@@ -97,7 +97,7 @@ async function main() {
       try {
         for (const [address, acct] of Object.entries(getState().accounts)) {
           if (!/^0x[0-9a-fA-F]{40}$/.test(address)) continue;
-          const moved = await syncLockedMargin(address, acct.locked).catch(() => 0);
+          const moved = (await syncLockedMargin(address, acct.locked).catch(() => ({ usd: 0 }))).usd;
           if (moved !== 0) {
             console.log(`[margin] resynced ${address.slice(0, 10)}… by ${moved.toFixed(6)} FXRP`);
           }

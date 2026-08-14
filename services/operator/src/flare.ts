@@ -381,25 +381,32 @@ export async function relayerBalance(): Promise<{ address: string; c2flr: number
  * Callers await it when margin is *increasing* (the safety-critical direction)
  * and can fire it and forget when margin is being released.
  *
- * Returns the signed delta applied on-chain, or 0 when already in sync.
+ * Returns the signed delta applied on-chain (0 when already in sync) and the
+ * transaction that applied it. The hash used to be dropped on the floor, which
+ * left every order without an on-chain record anyone could open — the commit
+ * route now logs it, so a trader can follow their own margin onto Flare.
  */
-export async function syncLockedMargin(trader: string, desiredLockedUsd: number): Promise<number> {
-  if (!flareConfigured()) return 0;
+export async function syncLockedMargin(
+  trader: string,
+  desiredLockedUsd: number,
+): Promise<{ usd: number; txHash?: Hex }> {
+  if (!flareConfigured()) return { usd: 0 };
   // Only an EVM account can hold a vault position; anything else (a test
   // fixture, a legacy identifier) has nothing on-chain to reserve.
-  if (!/^0x[0-9a-fA-F]{40}$/.test(trader)) return 0;
+  if (!/^0x[0-9a-fA-F]{40}$/.test(trader)) return { usd: 0 };
   const who = getAddress(trader);
   const onChain = await vaultAccount(who);
 
   const desired = usdToUnits(Math.max(0, desiredLockedUsd));
   const current = usdToUnits(onChain.locked);
-  if (desired === current) return 0;
+  if (desired === current) return { usd: 0 };
 
   const wc = walletClient();
   const account = relayer();
   const increasing = desired > current;
   const amount = increasing ? desired - current : current - desired;
 
+  let applied: Hex | undefined;
   await withRelayer(async () => {
     const txHash = await wc.writeContract({
       address: settlementAddress(),
@@ -410,6 +417,7 @@ export async function syncLockedMargin(trader: string, desiredLockedUsd: number)
       chain: flareChain,
     });
     await publicClient().waitForTransactionReceipt({ hash: txHash });
+    applied = txHash;
   });
-  return unitsToUsd(increasing ? amount : -amount);
+  return { usd: unitsToUsd(increasing ? amount : -amount), txHash: applied };
 }

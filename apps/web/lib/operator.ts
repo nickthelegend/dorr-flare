@@ -83,6 +83,9 @@ export interface CommitResult {
   success: boolean;
   orderId: string;
   jobId: string;
+  /** the on-chain margin lock this order caused, if Flare is configured */
+  marginTxHash?: string;
+  explorerUrl?: string;
   commitmentHash: string;
   sizeBase: number;
   commitPrice: number;

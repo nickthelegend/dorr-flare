@@ -330,23 +330,23 @@ def main():
 
     mid = {}
     live = live_attestation()
-    mid["tee-attest"] = lambda o: data_card(o, "Intel TDX attestation — live", [
-        ("enclave", "Phala dstack CVM  ·  prod5  ·  tdx.small"),
-        ("hardwareAttestation.available", "true"),
-        ("quote", live["head"] + "…   (5,010 bytes)"),
-        ("quoteHash", live["hash"][:46] + "…"),
+    mid["tee-attest"] = lambda o: data_card(o, "Who matches the order?", [
+        ("a sealed area inside an Intel processor", "software outside it cannot look in"),
+        ("rented from", "Phala Cloud  ·  dstack  ·  prod5"),
+        ("live at", "59b7ffee\u2026.dstack-pha-prod5.phala.network"),
+        ("chip is signing", "yes  \u00b7  5,010-byte receipt per batch"),
     ], DUR["tee-attest"] + 0.6, tmp)
-    mid["tee-bound"] = lambda o: data_card(o, "Bound to this settlement", [
-        ("report_data", live["report"][:46] + "…"),
-        ("= keccak256(epoch, root, price, count)", "the batch payload hash"),
-        ("what that means", "the CPU signed THIS batch, not \"an enclave exists\""),
-        ("competing entry", "process.env.IMAGE_DIGEST  ·  no quote fetched"),
-    ], DUR["tee-bound"] + 0.6, tmp, highlight="report_data")
-    mid["tx-details"] = lambda o: data_card(o, "DorrBatchSettlement — on-chain", [
-        ("tx", "0x3a732edf…09e3312"),
+    mid["tee-bound"] = lambda o: data_card(o, "The receipt is tied to your trades", [
+        ("the chip signs this", live["report"][:44] + "\u2026"),
+        ("which is a fingerprint of", "the exact trades in this batch"),
+        ("so the receipt", "cannot be reused for a different batch"),
+        ("anyone can check it against", "Intel\u2019s own records"),
+    ], DUR["tee-bound"] + 0.6, tmp, highlight="the chip signs this")
+    mid["tx-details"] = lambda o: data_card(o, "And Flare checks us too", [
+        ("before accepting a settlement", "the contract reads Flare\u2019s own price oracle"),
+        ("if our price is more than 2% off", "the transaction is rejected"),
+        ("so even if we wanted to cheat", "the chain would not let us"),
         ("contract", "0x047478DE7d2ed6B41dEFC14223764411288Db845"),
-        ("checks", "FTSO re-read  ·  ±200 bps band  ·  enclave quote"),
-        ("reverts if", "clearing price disagrees with the oracle"),
     ], DUR["tx-details"] + 0.6, tmp)
 
     for i, c in enumerate(clips):

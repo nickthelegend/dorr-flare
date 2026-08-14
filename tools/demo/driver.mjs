@@ -265,6 +265,33 @@ async function waitForTxs(n, timeoutMs) {
   throw new Error(`NO_TX_BROADCAST: expected ${n}, have ${TXS.length}`);
 }
 
+/** Come back from the explorer. A full page load drops the wallet connection —
+ *  the previous take reached the private trade disconnected, with the submit
+ *  button reading "Connect Wallet", and timed out clicking a button that was
+ *  never going to be there. Reconnect before doing anything that needs a key. */
+async function backToTrade(page) {
+  await page.goto(`${URLS.dorr}/trade`, { waitUntil: "networkidle" });
+  await assertHydrated(page, "dorr /trade");
+  await page.waitForTimeout(2500);
+  const connect = page.locator("button").filter({ hasText: /^Connect Wallet$/i }).first();
+  if (await connect.count()) {
+    await clickAt(page, "button:has-text('Connect Wallet')");
+    await until(page, "vault re-read after explorer",
+      () => /Free balance/i.test(document.body.innerText), 40000);
+    await page.waitForTimeout(1200);
+  }
+}
+
+/** Open a transaction on the Flare explorer and hold for its beat. */
+async function showTx(page, hash, beatId) {
+  if (!hash) throw new Error(`NO_TX_FOR_BEAT: ${beatId} narrates a transaction this take never sent`);
+  await page.goto(`${URLS.explorer}/tx/${hash}`, { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(2600);
+  await line(page, beatId);
+  await smoothTo(page, 420, 2400);
+  await hold(page, beatId);
+}
+
 async function clearPositions() {
   const { privateKeyToAccount } = await import("viem/accounts");
   const raw = DEMO_KEY.trim();
@@ -396,7 +423,14 @@ const takes = {
     // handleDeposit bailed on insufficient balance and never broadcast —
     // which is why the explorer beat had no transaction of its own to show.
     // inputMode="numeric" distinguishes it from the order form's decimal input.
-    await typeInto(page, "input[inputmode=numeric]", "1");
+    // Size the deposit off the wallet's real balance. A hardcoded "1" failed
+    // the previous take at 0.4 FXRP held — handleDeposit bails on insufficient
+    // balance and broadcasts nothing.
+    const held = Number(await fxrpBalance()) / 1e6;
+    const amount = Math.floor(held * 50) / 100;   // half, 2dp
+    if (amount < 0.05) throw new Error(`WALLET_TOO_EMPTY: ${held} FXRP held; withdraw from the vault first`);
+    console.log(`  depositing ${amount} of ${held} FXRP`);
+    await typeInto(page, "input[inputmode=numeric]", String(amount));
     await line(page, "deposit", { signing: true });
     const txsBefore = TXS.length;
     await clickAt(page, "button:has-text('DEPOSIT')");
@@ -408,19 +442,40 @@ const takes = {
 
     await line(page, "collateral"); await hold(page, "collateral");
 
-    // ── trade ────────────────────────────────────────────────────────────────
+    // ── trade: public first, then private, each followed by its own tx ──────
     await smoothTo(page, 0, 1200);
     await typeInto(page, "input[inputmode=decimal]", "0.05");
     await clickAt(page, "button:has-text('5x')");
     await line(page, "order-form"); await hold(page, "order-form");
 
     await clickAt(page, "button:has-text('Public foil')");
-    await page.waitForTimeout(1500);
-    await clickAt(page, "button:has-text('Private')");
+    await page.waitForTimeout(1400);
     await line(page, "privacy"); await hold(page, "privacy");
 
+    // PUBLIC — the order everyone can read
+    await line(page, "trade-public", { signing: true });
+    await clickAt(page, "button:has-text('publicly')");
+    await signingOverlay(page, true, "Signing Transaction");
+    await until(page, "public order in feed",
+      () => /PUBLIC|broadcast|FULLY VISIBLE/i.test(document.body.innerText), 120000);
+    await signingOverlay(page, false);
+    await hold(page, "trade-public");
+
+    await line(page, "feed-public"); await hold(page, "feed-public");
+
+    const pubTx = TXS[TXS.length - 1];
+    await showTx(page, pubTx, "explorer-public");
+
+    // PRIVATE — the same trade, sealed
+    await backToTrade(page);
+    await smoothTo(page, 0, 1200);
+    const reset2 = page.locator("button").filter({ hasText: /^New order$/i }).first();
+    if (await reset2.count()) { await clickAt(page, "button:has-text('New order')"); await page.waitForTimeout(1200); }
+    await clickAt(page, "button:has-text('Private')");
+    await typeInto(page, "input[inputmode=decimal]", "0.05");
+
     await line(page, "commit", { signing: true });
-    await clickAt(page, "button:has-text('LONG FLR')");
+    await clickAt(page, "button:has-text('privately')");
     await signingOverlay(page, true, "Signing Transaction");
     await until(page, "commitment in feed",
       () => /Committed private|commitment/i.test(document.body.innerText), 120000);
@@ -428,31 +483,12 @@ const takes = {
     await hold(page, "commit");
 
     await line(page, "feed"); await hold(page, "feed");
+    await showTx(page, TXS[TXS.length - 1], "explorer-private");
+
+    await backToTrade(page);
     await smoothTo(page, 700, 1600);
     await line(page, "positions"); await hold(page, "positions");
     // → tee-attest / tee-bound / tx-details slides splice in here
-
-    // ── the same trade, in the open ──────────────────────────────────────────
-    await smoothTo(page, 0, 1200);
-    // After a successful commit the panel is in its terminal state and the
-    // submit button is replaced by "New order" — so the public trade had
-    // nothing to click. Reset the form before placing the second one.
-    const reset = page.locator("button").filter({ hasText: /^New order$/i }).first();
-    if (await reset.count()) { await clickAt(page, "button:has-text('New order')"); await page.waitForTimeout(1200); }
-    await clickAt(page, "button:has-text('Public foil')");
-    await typeInto(page, "input[inputmode=decimal]", "0.05");
-    await line(page, "trade-public", { signing: true });
-    // The overlay used to go up whether or not the click landed, so it could
-    // cover a transaction that was never sent. Click first, and only raise it
-    // once the click actually succeeded.
-    await clickAt(page, "button:has-text('publicly')");
-    await signingOverlay(page, true, "Signing Transaction");
-    await until(page, "public order accepted",
-      () => /public|broadcast|Committed/i.test(document.body.innerText), 90000);
-    await signingOverlay(page, false);
-    await hold(page, "trade-public");
-
-    await line(page, "feed-public"); await hold(page, "feed-public");
 
     // ── now the attack means something ───────────────────────────────────────
     await clickAt(page, "header button:has-text('Attack Lab'), nav button:has-text('Attack Lab')");
@@ -475,16 +511,6 @@ const takes = {
     // ── check it ─────────────────────────────────────────────────────────────
     // This take's own transaction, with the historical settlement as the
     // fallback only if nothing was sent (which would itself be a failure).
-    // No silent fallback. The line says "the transactions this demo just
-    // created", so if none were, that is a failed take rather than a constant
-    // quietly standing in for one.
-    if (!TXS.length) throw new Error("NO_TX_TO_SHOW: explorer beat narrates a tx this take never sent");
-    const shown = TXS[TXS.length - 1];
-    console.log(`  explorer showing ${shown}`);
-    await page.goto(`${URLS.explorer}/tx/${shown}`, { waitUntil: "domcontentloaded" });
-    await page.waitForTimeout(2500);
-    await line(page, "explorer-tx"); await smoothTo(page, 500, 2600); await hold(page, "explorer-tx");
-
     await page.goto(`${URLS.explorer}/address/0x65b705A49778b9d7bD741A0A979162393c699a98?tab=txs`,
       { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(2500);

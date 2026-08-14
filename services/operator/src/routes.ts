@@ -363,8 +363,8 @@ async function reconcileVault(address: string): Promise<number> {
  * is released — a late release only briefly under-reports a trader's own free
  * balance, and the next call reconciles it anyway.
  */
-async function lockMarginForTrader(address: string): Promise<void> {
-  if (!flareConfigured()) return;
+async function lockMarginForTrader(address: string): Promise<string | undefined> {
+  if (!flareConfigured()) return undefined;
   // Retried, because refusing the order is the fallback and that is a harsh
   // outcome for a momentary 429 from a public RPC. Safe to repeat: the call
   // re-reads the vault's current `locked` and derives the delta from it, so a
@@ -373,8 +373,7 @@ async function lockMarginForTrader(address: string): Promise<void> {
   let last: unknown;
   for (let i = 0; i < 3; i++) {
     try {
-      await syncLockedMargin(address, account(address).locked);
-      return;
+      return (await syncLockedMargin(address, account(address).locked)).txHash;
     } catch (e) {
       last = e;
       if (i < 2) await new Promise((r) => setTimeout(r, 400 * 2 ** i));
@@ -485,8 +484,9 @@ app.post("/orders/commit", async (c) => {
   // itself knows the collateral is committed, the trader could withdraw it out
   // from under their own position. If the lock can't be made, undo the order
   // rather than open a position the chain doesn't back.
+  let marginTxHash: string | undefined;
   try {
-    await lockMarginForTrader(p.address);
+    marginTxHash = await lockMarginForTrader(p.address);
   } catch (e) {
     try {
       cancelOrder(committed.order.id);
@@ -496,11 +496,26 @@ app.post("/orders/commit", async (c) => {
     return bad(c, `could not reserve margin on-chain: ${String(e instanceof Error ? e.message : e).slice(0, 160)}`, 503);
   }
 
+  // The lock is this order's on-chain record: the vault reserving collateral
+  // for this trader, in this amount. It carries no side, size or price — which
+  // is the same whether the order was public or private, and is the point.
+  if (marginTxHash) {
+    logEvent({
+      type: "margin",
+      marketId: p.marketId,
+      detail: `Margin reserved on Flare for this order — the vault now holds it against the position`,
+      txHash: marginTxHash,
+      chain: "flare-coston2",
+    });
+  }
+
   const { order, jobId } = committed;
   return c.json({
     success: true,
     orderId: order.id,
     jobId,
+    marginTxHash,
+    explorerUrl: marginTxHash ? explorerTx(marginTxHash) : undefined,
     commitmentHash: order.commitmentHash,
     sizeBase: order.sizeBase,
     commitPrice: order.commitPrice,

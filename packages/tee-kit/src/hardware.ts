@@ -44,6 +44,10 @@ export interface HardwareQuote {
   reportData?: Hex;
   /** Confidential Space OIDC token, when that is the backend. */
   token?: string;
+  /** Every RPC spelling tried and how it failed, when no quote could be fetched.
+   *  Kept in the response because "available: false" alone sent a previous
+   *  deploy chasing method names instead of the socket that wasn't serving. */
+  attempts?: string[];
   note: string;
 }
 

@@ -156,7 +156,11 @@ export default function VerifyClient() {
             <ul className="mt-4 space-y-3 text-sm leading-relaxed text-white/75">
               <li>
                 <span className="text-white">
-                  {hw?.available ? "Hardware attestation is live." : "There is no hardware attestation here."}
+                  {hw === undefined
+                    ? "Reading the enclave\u2026"
+                    : hw?.available
+                      ? "Hardware attestation is live."
+                      : "There is no hardware attestation here."}
                 </span>{" "}
                 {hw?.note ??
                   "The enclave reports its own status; this line is whatever it says, not what we would like it to say."}

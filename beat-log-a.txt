@@ -1,21 +1,22 @@
-DEMO_LINE 3553 land-hero
-DEMO_LINE 14643 faucet-open
-DEMO_LINE 46831 faucet-claim
-DEMO_LINE 65620 connect
-DEMO_LINE 76707 deposit SIGNING
-DEMO_LINE 93489 collateral
-DEMO_LINE 105033 order-form
-DEMO_LINE 118917 privacy
-DEMO_LINE 131276 commit SIGNING
-DEMO_LINE 141936 feed
-DEMO_LINE 157123 positions
-DEMO_LINE 170154 trade-public SIGNING
-DEMO_LINE 180242 feed-public
-DEMO_LINE 190130 attack-open
-DEMO_LINE 212919 attack-run
-DEMO_LINE 243000 attack-sealed
-DEMO_LINE 266317 attack-batch
-DEMO_LINE 284069 explorer-tx
-DEMO_LINE 304790 explorer-vault
-DEMO_LINE 321911 verify
-DEMO_LINE 342708 tee-live
+DEMO_LINE 2482 land-hero
+DEMO_LINE 12033 faucet-open
+DEMO_LINE 41566 faucet-claim
+DEMO_LINE 51879 connect
+DEMO_LINE 60836 deposit SIGNING
+DEMO_LINE 81712 collateral
+DEMO_LINE 91160 order-form
+DEMO_LINE 103394 privacy
+DEMO_LINE 114623 trade-public SIGNING
+DEMO_LINE 119017 feed-public
+DEMO_LINE 136770 explorer-public
+DEMO_LINE 155715 commit SIGNING
+DEMO_LINE 159269 feed
+DEMO_LINE 177330 explorer-private
+DEMO_LINE 200611 positions
+DEMO_LINE 210214 attack-open
+DEMO_LINE 223904 attack-run
+DEMO_LINE 250366 attack-sealed
+DEMO_LINE 273701 attack-batch
+DEMO_LINE 288803 explorer-vault
+DEMO_LINE 305535 verify
+DEMO_LINE 318682 tee-live
